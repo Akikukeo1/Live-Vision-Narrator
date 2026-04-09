@@ -136,6 +136,9 @@ async def ui():
                 label{display:block;margin-top:8px}
                 input, select, textarea{font-family:inherit}
                 #out{background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto}
+                .button-row{display:flex;gap:12px;align-items:center;margin-top:10px}
+                .big-btn{font-size:2.4rem;padding:10px 18px;border-radius:8px;background:#f6f8fa;border:1px solid #d1d5db;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+                .big-btn-container{display:flex;gap:12px;margin-top:8px}
             </style>
         </head>
         <body>
@@ -144,8 +147,11 @@ async def ui():
                 <label for="sessionId">Session ID</label>
                 <div style="display:flex;gap:8px;align-items:center;max-width:95%;margin-top:6px">
                     <input id="sessionId" name="sessionId" placeholder="default" value="default" style="flex:1"/>
-                    <button id="resetSessionBtn" type="button">記憶リセット</button>
-                    <button id="showSessionBtn" type="button">記憶表示</button>
+                </div>
+
+                <div class="button-row big-btn-container">
+                    <button id="resetSessionBtn" type="button" class="big-btn">記憶リセット</button>
+                    <button id="showSessionBtn" type="button" class="big-btn">記憶表示</button>
                 </div>
 
                 <label for="model">Model</label>
@@ -163,7 +169,7 @@ async def ui():
                     <label><input id="parallelToggle" type="checkbox"/> 並列許可（ONで複数同時実行）</label>
                 </div>
 
-                <button id="sendBtn" type="button">送信</button>
+                <button id="sendBtn" type="button" class="big-btn">送信</button>
             </form>
 
             <h3>Response</h3>
