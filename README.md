@@ -112,3 +112,86 @@ echo "Hello" | ollama run live-narrator
   - `--hidethinking`: Thinking出力を非表示にします。
 
 - 詳細は `ollama --help` を参照してください。
+
+---
+
+## 心の声（inner voice）機能 — 概要
+
+このプロジェクトでは、応答の「後付け推測（心の声）」をオプションで出力できる機能を実装しています。主に開発者向けのデバッグ／UX実験用で、UIトグルでON/OFF・保存・詳細度を切り替えできます。
+
+主な特徴:
+- メイン応答は常に短くシンプル（`Modelfile` の SYSTEM 指示に従う）。
+- クライアントが `心の声を表示する` をONにした場合にのみ、別フィールドまたは `<inner_voice>...</inner_voice>` タグで後付けの推測を返す。
+- `詳しく表示`（`short`/`long`）や `保存する`（セッション履歴へ保存）をUIで制御可能。
+- ローカルの `Modelfile.detailed` を `System Profile` として選択すると、より詳しい出力ルールが適用される。
+
+### UI とパラメータ（実装済み）
+- トグル: `心の声を表示する` → リクエストに `parameters.reveal_thoughts=true` を付与。
+- トグル: `心の声を保存する` → `parameters.save_inner=true` を付与（サーバが `SESSION_HISTORY` に保存）。
+- セレクト: `詳しく表示` → `parameters.inner_detail = "short" | "long"`。
+- セレクト: `System Profile` → `parameters.system_profile = "detailed"` で `Modelfile.detailed` を一時的に `system` として上書き。
+
+### サーバ側の挙動（概略）
+- `build_payload()` は `parameters.system_profile` を検査し、許可されたローカルファイル（`Modelfile` / `Modelfile.detailed`）を読み込んで `payload["system"]` に一時設定します（ログには中身を出力しません）。
+- `reveal_thoughts` を要求するとモデルへ分かりやすく指示するためにプロンプト先頭に小さな制御タグ（例: `[REVEAL_INNER_VOICE]`）を付与します。
+- 非ストリーミング/ストリーミング双方で、モデルが返す `thinking` フィールド、または `<inner_voice>...</inner_voice>` を検出して、`save_inner=true` の場合に `SESSION_HISTORY` に `role: assistant.inner` として保存します。
+
+### Modelfile.detailed について
+- このリポジトリに `Modelfile.detailed` を追加済みです。主な追加点:
+  - `心の声` の出力ルール（structured/human モード）の指示と例を含む。
+  - `structured` モードは `summary/evidence/alternatives/confidence` を短く列挙する形式（JSONまたは `<inner_voice>{...}</inner_voice>`）。
+  - `human` モードは感情的・人間的表現の短文＋根拠1文を出す形式。
+
+### 制御タグ（プロンプト先頭）
+- `[REVEAL_INNER_VOICE]` — 心の声を出す許可。
+- `[INNER_STYLE:structured]` / `[INNER_STYLE:human]` — 出力のスタイルを指定。
+
+サンプル（non-stream）リクエスト例:
+
+```bash
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "live-narrator",
+    "prompt": "あの動きどう思う？",
+    "parameters": {
+      "reveal_thoughts": true,
+      "save_inner": true,
+      "inner_detail": "long",
+      "system_profile": "detailed"
+    },
+    "session_id": "default"
+  }'
+```
+
+レスポンスは通常の `response` に加えて、`thinking` または `<inner_voice>...</inner_voice>` を含むことがあります（UIでは `心の声` セクションとして表示）。
+
+### 安全・運用メモ
+- 逐語的チェイン・オブ・ソート（モデル内部のトークン列）を出力しないよう設計しています。心の声は要約や短い人間的表現に限定してください。
+- `system_profile` で読み込むファイルの中身はサーバログに出力しないでください（現実装ではログに記録しません）。
+- この機能は開発用のUX実験向けです。永続的運用時は保存ポリシーやアクセス制御を検討してください。
+
+### 動作確認手順（簡潔）
+1. サーバ起動:
+
+```bash
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+2. ブラウザで `http://127.0.0.1:8000/ui` を開き、
+   - `心の声を表示する` を ON にする
+   - `詳しく表示` を `詳しい` にする（必要なら `保存する` を ON）
+   - `System Profile` を `detailed` に切り替える
+   - プロンプトを送信して応答と心の声を確認する
+
+3. セッション履歴の確認:
+
+```bash
+curl -X POST http://127.0.0.1:8000/session/get -H "Content-Type: application/json" -d '{"session_id":"default"}'
+```
+
+保存された `assistant.inner` が `history` に含まれるはずです（`save_inner` を有効にした場合）。
+
+---
+
+必要なら、`parameters.inner_style`（`human`/`structured`）を受けて自動的に制御タグを付与するサーバ側パッチも作ります。要望があれば続けます。
