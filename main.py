@@ -63,86 +63,115 @@ async def root():
 
 @app.get("/ui", response_class=HTMLResponse)
 async def ui():
-        html = """
-        <!doctype html>
-        <html>
-            <head>
-                <meta charset="utf-8" />
-                <title>Ollama Proxy UI</title>
-                <style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px}label{display:block;margin-top:8px}</style>
-            </head>
-            <body>
-                <h2>Ollama Proxy — Test UI</h2>
-                <form id="form">
-                    <label>Model<br/>
-                        <select id="modelSelect" style="width:60%"></select>
-                        <div style="margin-top:6px"><label><input id="customToggle" type="checkbox"/> カスタム指定</label></div>
-                        <input id="model" placeholder="カスタムモデル名" style="width:60%;display:none;margin-top:6px"/>
-                    </label>
-                    <label>Prompt<br/><textarea id="prompt" rows="6" style="width:80%">こんにちは</textarea></label>
-                    <label>Additional JSON parameters (optional)<br/><textarea id="params" rows="4" style="width:80%">{
-}
-</textarea></label>
-                    <button type="submit">送信</button>
-                </form>
-                <h3>Response</h3>
-                <pre id="out" style="background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto"></pre>
+    html = """
+    <!doctype html>
+    <html>
+        <head>
+            <meta charset="utf-8" />
+            <title>Ollama Proxy UI</title>
+            <style>
+                body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px}
+                label{display:block;margin-top:8px}
+                input, select, textarea{font-family:inherit}
+                #out{background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto}
+            </style>
+        </head>
+        <body>
+            <h2>Ollama Proxy — Test UI</h2>
+            <form id="form">
+                <label>Model
+                    <input id="model" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
+                </label>
 
-                <script>
-                    const form = document.getElementById('form');
-                    const out = document.getElementById('out');
-                    form.addEventListener('submit', async (e)=>{
-                        e.preventDefault();
+                <label>Prompt
+                    <textarea id="prompt" rows="6" style="width:80%">こんにちは</textarea>
+                </label>
+
+                <label>Additional JSON parameters (optional)
+                    <textarea id="params" rows="4" style="width:80%">{
+                }</textarea>
+                </label>
+
+                <div style="margin-top:8px">
+                    <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
+                </div>
+
+                <button type="submit">送信</button>
+            </form>
+
+            <h3>Response</h3>
+            <pre id="out"></pre>
+
+            <script>
+                const out = document.getElementById('out');
+                const form = document.getElementById('form');
+
+                function appendText(text){
+                    out.textContent += text;
+                    out.scrollTop = out.scrollHeight;
+                }
+
+                form.addEventListener('submit', async (e)=>{
+                    e.preventDefault();
+                    out.textContent = '';
+                    const modelInput = document.getElementById('model');
+                    const modelName = modelInput.value;
+                    const prompt = document.getElementById('prompt').value;
+                    let parameters = {};
+                    try{ parameters = JSON.parse(document.getElementById('params').value) }catch(err){ out.textContent = 'Invalid JSON in parameters'; return }
+
+                    const body = { model: modelName, prompt, parameters };
+                    const stream = document.getElementById('streamToggle').checked;
+
+                    if(!stream){
                         out.textContent = '…sending';
-                        const model = document.getElementById('model').value;
-                        const prompt = document.getElementById('prompt').value;
-                        let parameters = {};
-                        try{ parameters = JSON.parse(document.getElementById('params').value) }catch(err){ out.textContent = 'Invalid JSON in parameters'; return }
-                            const useCustom = document.getElementById('customToggle').checked;
-                            const modelSelect = document.getElementById('modelSelect');
-                            const modelInput = document.getElementById('model');
-                            const modelName = useCustom ? modelInput.value : modelSelect.value;
-                            const body = { model: modelName, prompt, parameters };
                         try{
                             const r = await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
                             const t = await r.text();
                             try{ out.textContent = JSON.stringify(JSON.parse(t), null, 2) }catch(e){ out.textContent = t }
                         }catch(err){ out.textContent = String(err) }
-                    })
-
-                    // Populate model list on load
-                    async function loadModels(){
-                        try{
-                            const r = await fetch('/models');
-                            if(!r.ok) throw new Error('failed to fetch models');
-                            const data = await r.json();
-                            const select = document.getElementById('modelSelect');
-                            // Expecting array or object. Try common shapes.
-                            let models = [];
-                            if(Array.isArray(data)) models = data;
-                            else if (data.models && Array.isArray(data.models)) models = data.models;
-                            else if (data.items && Array.isArray(data.items)) models = data.items;
-                            else if (typeof data === 'object') models = Object.values(data);
-                            models.forEach(m=>{
-                                const name = (typeof m === 'string') ? m : (m.name || m.id || JSON.stringify(m));
-                                const opt = document.createElement('option'); opt.value = name; opt.textContent = name; select.appendChild(opt);
-                            });
-                            if(select.options.length>0) select.value = select.options[0].value;
-                        }catch(err){ console.warn('Could not load models', err) }
+                        return;
                     }
-                    loadModels();
 
-                    // Toggle custom input visibility
-                    document.getElementById('customToggle').addEventListener('change', (e)=>{
-                        const custom = e.target.checked;
-                        document.getElementById('model').style.display = custom ? 'block' : 'none';
-                        document.getElementById('modelSelect').style.display = custom ? 'none' : 'inline-block';
-                    });
-                </script>
-            </body>
-        </html>
-        """
-        return HTMLResponse(content=html)
+                    // Streaming request
+                    try{
+                        const r = await fetch('/generate/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                        if(!r.ok){ out.textContent = 'Error: '+r.status; return }
+                        const reader = r.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
+                        while(true){
+                            const { done, value } = await reader.read();
+                            if(done) break;
+                            buffer += decoder.decode(value, { stream: true });
+                            const parts = buffer.split(/\r?\n/);
+                            buffer = parts.pop();
+                            for(const part of parts){
+                                if(!part.trim()) continue;
+                                try{
+                                    const obj = JSON.parse(part);
+                                    if(obj.response !== undefined){
+                                        appendText(obj.response);
+                                    } else if(obj.choices && Array.isArray(obj.choices)){
+                                        obj.choices.forEach(c=>{ if(c.text) appendText(c.text) });
+                                    } else {
+                                        appendText(part+'\n');
+                                    }
+                                }catch(err){ appendText(part+'\n'); }
+                            }
+                        }
+                        if(buffer.trim()){
+                            try{ const obj = JSON.parse(buffer); if(obj.response) appendText(obj.response); else appendText(buffer); }catch(e){ appendText(buffer) }
+                        }
+                    }catch(err){ out.textContent = String(err) }
+                });
+
+                // Model list removed: using manual input only
+            </script>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 
 
 @app.post("/generate")
