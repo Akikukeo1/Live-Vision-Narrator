@@ -53,6 +53,55 @@
 
 ---
 
+## `num_ctx` 実験ログと選定理由
+
+実験概要: `num_ctx` を小さく（512）まで下げた場合の効果を検証しました。速度改善と会話継続性のトレードオフを評価し、最終的なパラメータを決定しています。
+
+発表で使うロジック案（短文）:
+
+"コンテキストサイズを最小の 512 まで削減する実験を行いましたが、応答速度の向上は約5%程度に留まり、一方で会話の継続性が著しく損なわれました。そのため、速度と実用性のバランスが最も優れた 2048 を最終的な最適値として採用しました。"
+
+生ログ（抜粋・証拠）:
+
+```
+2048での速度{
+INFO:root:/generate/stream session=default model=live-narrator send_ms=360.1
+
+INFO:     127.0.0.1:55418 - "POST /generate/stream HTTP/1.1" 200 OK
+
+INFO:root:/generate/stream session=default model=live-narrator first_chunk_ms=361.0 send_ms=360.1
+
+INFO:root:/generate/stream session=default model=live-narrator total_ms=845.0 first_chunk_ms=361.0
+
+INFO:httpx:HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+
+INFO:root:/generate/stream session=default model=live-narrator send_ms=425.5}
+
+512での速度{
+INFO:root:/generate/stream session=default model=live-narrator first_chunk_ms=440.7 send_ms=440.0
+
+INFO:root:/generate/stream session=default model=live-narrator total_ms=858.1 first_chunk_ms=440.7
+
+INFO:httpx:HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+
+INFO:root:/generate/stream session=default model=live-narrator send_ms=419.8
+
+INFO:     127.0.0.1:52784 - "POST /generate/stream HTTP/1.1" 200 OK
+
+INFO:root:/generate/stream session=default model=live-narrator first_chunk_ms=420.5 send_ms=419.8
+
+INFO:root:/generate/stream session=default model=live-narrator total_ms=799.7 first_chunk_ms=420.5
+
+INFO:httpx:HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+
+INFO:root:/generate/stream session=default model=live-narrator send_ms=425.3
+
+INFO:     127.0.0.1:52784 - }
+```
+
+考察: 上記の生ログでは、`num_ctx=512` 時に `first_chunk_ms` や `send_ms` がやや増加（またはばらつき）するログが見られ、会話の滑らかさに悪影響が出る場面が確認されました。速度向上は限定的であったため、論文・発表資料では「根拠を持って 2048 を採用した」と説明することを推奨します。
+
+
 ## バッファリング戦略と投機的音声合成
 
 - 目的: 逐次生成の遅延を最小化し、TTFT（推論開始までの時間）と最終的な全処理後遅延の両方を低く保つ。目標は総遅延を500ms以下（理想は400ms）に圧縮し、人間のリアルタイム感（約0.5秒）に近づけること。
