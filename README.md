@@ -42,7 +42,20 @@ curl -N -X POST http://127.0.0.1:8000/generate/stream \
 ## 環境変数
 - `OLLAMA_URL` (default: `http://localhost:11434`)
 - `OLLAMA_GENERATE_PATH` (default: `/api/generate`)
-- `WARMUP_MODEL` (任意、起動時にプリロードしたいモデル名)# Live-Vision-Narrator
+- `WARMUP_MODEL` (任意、起動時にプリロードしたいモデル名)
+
+### NVIDIA GPU: 永続化モードの推奨
+
+NVIDIA GPU を使用する場合、ドライバの電源管理により初回推論で遅延やデバイスのリセットが発生することがあります。サーバー常駐で安定して使うために永続化モードを有効化することを推奨します（管理者権限が必要）:
+
+```bash
+# 永続化モードを有効化
+nvidia-smi -pm 1
+```
+
+注意: 管理者（または管理者権限のあるシェル）で実行してください。環境やドライバによっては再起動後に再実行が必要な場合があります。
+
+# Live-Vision-Narrator
 
 このプロジェクトの目的は、リアルタイムに人間と会話させるためのAIをローカルで動作させることです。
 
