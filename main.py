@@ -72,7 +72,11 @@ def build_payload(req: GenerateRequest) -> dict:
     if req.parameters and isinstance(req.parameters, dict):
         # If client requested reveal_thoughts, inform model via prompt prefix
         if bool(req.parameters.get("reveal_thoughts")):
+            # Tell the model to include inner-voice and mark the prompt —
+            # also set think=true so the model actually emits thinking content.
             payload["prompt"] = "[REVEAL_INNER_VOICE]\n" + payload["prompt"]
+            payload.setdefault("options", {})
+            payload["options"]["think"] = True
         # Forward client parameters except server-only controls
         params_to_forward = {k: v for k, v in req.parameters.items() if k not in server_keys}
         if params_to_forward:
