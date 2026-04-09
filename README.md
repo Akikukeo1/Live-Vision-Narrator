@@ -1,4 +1,39 @@
-# Live-Vision-Narrator
+# Ollama proxy (FastAPI)
+
+> Low-latency resident FastAPI wrapper that forwards requests to a local Ollama instance.
+
+## 要点
+- Ollamaをローカルで常駐させ、`main.py`（FastAPI）に命令を投げます。
+- 低遅延のためプロセス常駐 + `httpx.AsyncClient` の再利用を行っています。
+
+## 使い方
+1. Ollamaを起動（例: `ollama serve` 等）
+2. このフォルダで仮想環境を作成して依存をインストール:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. サーバー起動（常駐で低遅延を重視するなら `--workers 1` 推奨）:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+4. 例: 生成リクエスト
+
+```bash
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gemma-4-E4B-it-IQ4_XS", "prompt": "こんにちは"}'
+```
+
+## 環境変数
+- `OLLAMA_URL` (default: `http://localhost:11434`)
+- `OLLAMA_GENERATE_PATH` (default: `/api/generate`)
+- `WARMUP_MODEL` (任意、起動時にプリロードしたいモデル名)# Live-Vision-Narrator
 
 このプロジェクトの目的は、リアルタイムに人間と会話させるためのAIをローカルで動作させることです。
 
