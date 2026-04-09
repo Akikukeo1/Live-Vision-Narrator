@@ -99,71 +99,133 @@ async def ui():
                 <textarea id="params" name="params" rows="4" style="width:95%;margin-top:6px">{
                 }</textarea>
 
-                  <div style="margin-top:8px">
-                        <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
-                    </div>
+                <div style="margin-top:8px">
+                    <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
+                    <label><input id="parallelToggle" type="checkbox"/> 並列許可（ONで複数同時実行）</label>
+                </div>
 
-                    <button id="sendBtn" type="button">送信</button>
+                <button id="sendBtn" type="button">送信</button>
             </form>
 
             <h3>Response</h3>
-            <pre id="out"></pre>
+            <div id="responses"></div>
 
-                        <script>
-                            console.log('Ollama UI script loaded');
-                            window.addEventListener('error', (e)=>{ console.error('UI error', e); });
-                            const out = document.getElementById('out');
-                            const form = document.getElementById('form');
-                            const sendBtn = document.getElementById('sendBtn');
-                            // Ensure clicking the button triggers the same submit handler
-                            if(sendBtn){
-                                sendBtn.addEventListener('click', (e)=>{
-                                    try{ form.requestSubmit(); }catch(err){ form.dispatchEvent(new Event('submit', {cancelable:true})); }
-                                });
-                            }
+            <script>
+                console.log('Ollama UI script loaded');
+                window.addEventListener('error', (e)=>{ console.error('UI error', e); });
 
-                function appendText(text){
-                    out.textContent += text;
-                    out.scrollTop = out.scrollHeight;
+                const form = document.getElementById('form');
+                const sendBtn = document.getElementById('sendBtn');
+                const responses = document.getElementById('responses');
+                let activeController = null;
+                let requestId = 0;
+
+                function createResponsePane(id, replaceExisting){
+                    if(replaceExisting){
+                        responses.innerHTML = '';
+                    }
+                    const card = document.createElement('div');
+                    card.style.border = '1px solid #e5e7eb';
+                    card.style.borderRadius = '8px';
+                    card.style.padding = '8px';
+                    card.style.marginBottom = '8px';
+
+                    const title = document.createElement('div');
+                    title.style.fontSize = '12px';
+                    title.style.color = '#6b7280';
+                    title.textContent = 'Request #' + id;
+
+                    const pre = document.createElement('pre');
+                    pre.style.background = '#f6f8fa';
+                    pre.style.padding = '12px';
+                    pre.style.borderRadius = '6px';
+                    pre.style.maxHeight = '320px';
+                    pre.style.overflow = 'auto';
+                    pre.style.marginTop = '6px';
+                    pre.textContent = '';
+
+                    card.appendChild(title);
+                    card.appendChild(pre);
+                    responses.prepend(card);
+                    return pre;
+                }
+
+                function appendText(target, text){
+                    target.textContent += text;
+                    target.scrollTop = target.scrollHeight;
+                }
+
+                if(sendBtn){
+                    sendBtn.addEventListener('click', ()=>{
+                        try{ form.requestSubmit(); }catch(err){ form.dispatchEvent(new Event('submit', {cancelable:true})); }
+                    });
                 }
 
                 form.addEventListener('submit', async (e)=>{
                     e.preventDefault();
-                    out.textContent = '';
-                    const modelInput = document.getElementById('model');
-                    const modelName = modelInput.value;
+
+                    const modelName = document.getElementById('model').value;
                     const prompt = document.getElementById('prompt').value;
-                    let parameters = {};
-                    try{ parameters = JSON.parse(document.getElementById('params').value) }catch(err){ out.textContent = 'Invalid JSON in parameters'; return }
-
-                    const body = { model: modelName, prompt, parameters };
-                    console.log('Form submit: model=%s, prompt_len=%d, streaming=%s', modelName, prompt.length, document.getElementById('streamToggle').checked);
                     const stream = document.getElementById('streamToggle').checked;
+                    const allowParallel = document.getElementById('parallelToggle').checked;
 
-                    if(!stream){
-                        out.textContent = '…sending';
-                        try{
-                            const r = await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-                            const t = await r.text();
-                            try{ out.textContent = JSON.stringify(JSON.parse(t), null, 2) }catch(e){ out.textContent = t }
-                        }catch(err){ out.textContent = String(err) }
+                    let parameters = {};
+                    try{ parameters = JSON.parse(document.getElementById('params').value); }
+                    catch(err){
+                        const pane = createResponsePane(++requestId, !allowParallel);
+                        pane.textContent = 'Invalid JSON in parameters';
                         return;
                     }
 
-                    // Streaming request
+                    if(!allowParallel && activeController){
+                        activeController.abort();
+                    }
+
+                    const controller = new AbortController();
+                    if(!allowParallel){
+                        activeController = controller;
+                    }
+
+                    const pane = createResponsePane(++requestId, !allowParallel);
+                    const body = { model: modelName, prompt, parameters };
+
+                    console.log('Form submit: model=%s, prompt_len=%d, streaming=%s, parallel=%s', modelName, prompt.length, stream, allowParallel);
+
                     try{
-                        console.log('Fetching /generate/stream...');
-                        const r = await fetch('/generate/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-                        console.log('Response status:', r.status, r.statusText);
-                        if(!r.ok){ out.textContent = 'Error: '+r.status; return }
+                        if(!stream){
+                            pane.textContent = '...sending';
+                            const r = await fetch('/generate', {
+                                method:'POST',
+                                headers:{'Content-Type':'application/json'},
+                                body:JSON.stringify(body),
+                                signal: controller.signal,
+                            });
+                            const t = await r.text();
+                            try{ pane.textContent = JSON.stringify(JSON.parse(t), null, 2); }
+                            catch(_){ pane.textContent = t; }
+                            return;
+                        }
+
+                        pane.textContent = '';
+                        const r = await fetch('/generate/stream', {
+                            method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body:JSON.stringify(body),
+                            signal: controller.signal,
+                        });
+
+                        if(!r.ok){
+                            pane.textContent = 'Error: ' + r.status;
+                            return;
+                        }
+
                         const reader = r.body.getReader();
                         const decoder = new TextDecoder();
                         let buffer = '';
-                        let chunkCount = 0;
+
                         while(true){
                             const { done, value } = await reader.read();
-                            if(done) { console.log('Stream ended after', chunkCount, 'chunks'); break; }
-                            chunkCount += 1;
+                            if(done) break;
                             buffer += decoder.decode(value, { stream: true });
                             const parts = buffer.split(/\r?\n/);
                             buffer = parts.pop();
@@ -172,22 +234,39 @@ async def ui():
                                 try{
                                     const obj = JSON.parse(part);
                                     if(obj.response !== undefined){
-                                        appendText(obj.response);
+                                        appendText(pane, obj.response);
                                     } else if(obj.choices && Array.isArray(obj.choices)){
-                                        obj.choices.forEach(c=>{ if(c.text) appendText(c.text) });
+                                        obj.choices.forEach(c=>{ if(c.text) appendText(pane, c.text); });
                                     } else {
-                                        appendText(part+'\n');
+                                        appendText(pane, part + '\n');
                                     }
-                                }catch(err){ appendText(part+'\n'); }
+                                }catch(_){
+                                    appendText(pane, part + '\n');
+                                }
                             }
                         }
-                        if(buffer.trim()){
-                            try{ const obj = JSON.parse(buffer); if(obj.response) appendText(obj.response); else appendText(buffer); }catch(e){ appendText(buffer) }
-                        }
-                    }catch(err){ out.textContent = String(err) }
-                });
 
-                // Model list removed: using manual input only
+                        if(buffer.trim()){
+                            try{
+                                const obj = JSON.parse(buffer);
+                                if(obj.response !== undefined) appendText(pane, obj.response);
+                                else appendText(pane, buffer);
+                            }catch(_){
+                                appendText(pane, buffer);
+                            }
+                        }
+                    }catch(err){
+                        if(err && err.name === 'AbortError'){
+                            appendText(pane, '\n[aborted]');
+                        } else {
+                            pane.textContent = String(err);
+                        }
+                    } finally {
+                        if(activeController === controller){
+                            activeController = null;
+                        }
+                    }
+                });
             </script>
         </body>
     </html>
