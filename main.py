@@ -25,6 +25,10 @@ class SessionResetRequest(BaseModel):
     session_id: str
 
 
+class SessionGetRequest(BaseModel):
+    session_id: str
+
+
 def build_payload(req: GenerateRequest) -> dict:
     payload: dict = {"model": req.model, "prompt": req.prompt}
     if req.parameters:
@@ -112,6 +116,7 @@ async def ui():
                 <div style="display:flex;gap:8px;align-items:center;max-width:95%;margin-top:6px">
                     <input id="sessionId" name="sessionId" placeholder="default" value="default" style="flex:1"/>
                     <button id="resetSessionBtn" type="button">記憶リセット</button>
+                    <button id="showSessionBtn" type="button">記憶表示</button>
                 </div>
 
                 <label for="model">Model</label>
@@ -142,6 +147,7 @@ async def ui():
                 const form = document.getElementById('form');
                 const sendBtn = document.getElementById('sendBtn');
                 const resetSessionBtn = document.getElementById('resetSessionBtn');
+                const showSessionBtn = document.getElementById('showSessionBtn');
                 const responses = document.getElementById('responses');
                 let activeController = null;
                 let requestId = 0;
@@ -207,6 +213,32 @@ async def ui():
                             });
                             const t = await r.text();
                             pane.textContent = t;
+                            if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
+                        }catch(err){
+                            pane.textContent = String(err);
+                            if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
+                        }
+                    });
+                }
+
+                if(showSessionBtn){
+                    showSessionBtn.addEventListener('click', async ()=>{
+                        const sessionId = document.getElementById('sessionId').value || 'default';
+                        const pane = createResponsePane(++requestId, false);
+                        pane.textContent = '...loading session memory';
+                        try{
+                            const r = await fetch('/session/get', {
+                                method:'POST',
+                                headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({session_id: sessionId}),
+                            });
+                            const t = await r.text();
+                            try{
+                                const obj = JSON.parse(t);
+                                pane.textContent = JSON.stringify(obj, null, 2);
+                            }catch(_){
+                                pane.textContent = t;
+                            }
                             if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
                         }catch(err){
                             pane.textContent = String(err);
@@ -453,6 +485,18 @@ async def models_list():
 async def reset_session(req: SessionResetRequest):
     SESSION_CONTEXTS.pop(req.session_id, None)
     return {"ok": True, "session_id": req.session_id, "reset": True}
+
+
+@app.post("/session/get")
+async def get_session(req: SessionGetRequest):
+    ctx = SESSION_CONTEXTS.get(req.session_id)
+    return {
+        "ok": True,
+        "session_id": req.session_id,
+        "has_context": ctx is not None,
+        "context_length": len(ctx) if isinstance(ctx, list) else 0,
+        "context": ctx,
+    }
 
 
 if __name__ == "__main__":
