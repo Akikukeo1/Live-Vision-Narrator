@@ -104,6 +104,13 @@ async def ui():
                             window.addEventListener('error', (e)=>{ console.error('UI error', e); });
                             const out = document.getElementById('out');
                             const form = document.getElementById('form');
+                            const sendBtn = document.getElementById('sendBtn');
+                            // Ensure clicking the button triggers the same submit handler
+                            if(sendBtn){
+                                sendBtn.addEventListener('click', (e)=>{
+                                    try{ form.requestSubmit(); }catch(err){ form.dispatchEvent(new Event('submit', {cancelable:true})); }
+                                });
+                            }
 
                 function appendText(text){
                     out.textContent += text;
