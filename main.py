@@ -125,6 +125,8 @@ async def ui():
                         responses.innerHTML = '';
                     }
                     const card = document.createElement('div');
+                    card.dataset.status = 'running';
+                    card.dataset.requestId = String(id);
                     card.style.border = '1px solid #e5e7eb';
                     card.style.borderRadius = '8px';
                     card.style.padding = '8px';
@@ -148,6 +150,11 @@ async def ui():
                     card.appendChild(pre);
                     responses.prepend(card);
                     return pre;
+                }
+
+                function pruneFinishedCards(){
+                    const finished = responses.querySelectorAll('div[data-status="done"]');
+                    finished.forEach((node)=>node.remove());
                 }
 
                 function appendText(target, text){
@@ -174,7 +181,13 @@ async def ui():
                     catch(err){
                         const pane = createResponsePane(++requestId, !allowParallel);
                         pane.textContent = 'Invalid JSON in parameters';
+                        if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
                         return;
+                    }
+
+                    if(allowParallel){
+                        // On new parallel request, remove already-finished old requests.
+                        pruneFinishedCards();
                     }
 
                     if(!allowParallel && activeController){
@@ -262,6 +275,9 @@ async def ui():
                             pane.textContent = String(err);
                         }
                     } finally {
+                        if(pane.parentElement){
+                            pane.parentElement.dataset.status = 'done';
+                        }
                         if(activeController === controller){
                             activeController = null;
                         }
