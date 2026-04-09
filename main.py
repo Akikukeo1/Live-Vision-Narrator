@@ -266,6 +266,29 @@ async def ui():
 
                     card.appendChild(title);
                     card.appendChild(pre);
+                    // Thinking panel (hidden by default). We'll attach to the card for easy access.
+                    const thinkingLabel = document.createElement('div');
+                    thinkingLabel.style.fontSize = '12px';
+                    thinkingLabel.style.color = '#9ca3af';
+                    thinkingLabel.style.marginTop = '6px';
+                    thinkingLabel.textContent = 'Thinking';
+                    thinkingLabel.style.display = 'none';
+
+                    const thinkingPre = document.createElement('pre');
+                    thinkingPre.style.background = '#fff7ed';
+                    thinkingPre.style.padding = '8px';
+                    thinkingPre.style.borderRadius = '6px';
+                    thinkingPre.style.maxHeight = '200px';
+                    thinkingPre.style.overflow = 'auto';
+                    thinkingPre.style.marginTop = '6px';
+                    thinkingPre.style.display = 'none';
+                    thinkingPre.textContent = '';
+
+                    card.appendChild(thinkingLabel);
+                    card.appendChild(thinkingPre);
+                    // Expose for callers: pane.parentElement.thinkingPre
+                    card.thinkingPre = thinkingPre;
+                    card.thinkingLabel = thinkingLabel;
                     responses.prepend(card);
                     return pre;
                 }
@@ -393,6 +416,16 @@ async def ui():
                                 if(!part.trim()) continue;
                                 try{
                                     const obj = JSON.parse(part);
+                                    if(obj.thinking !== undefined){
+                                        // show thinking in a smaller area
+                                        if(!wrapper.thinkingPre){
+                                            const tl = document.createElement('div'); tl.style.fontSize='12px'; tl.style.color='#9ca3af'; tl.textContent='Thinking'; tl.style.marginTop='6px'; tl.style.display='block';
+                                            const tp = document.createElement('pre'); tp.style.background='#fff7ed'; tp.style.padding='8px'; tp.style.borderRadius='6px'; tp.style.maxHeight='200px'; tp.style.overflow='auto'; tp.style.marginTop='6px'; tp.textContent='';
+                                            wrapper.appendChild(tl); wrapper.appendChild(tp); wrapper.thinkingPre = tp; wrapper.thinkingLabel = tl;
+                                        }
+                                        wrapper.thinkingLabel.style.display = 'block'; wrapper.thinkingPre.style.display = 'block';
+                                        wrapper.thinkingPre.textContent += obj.thinking;
+                                    }
                                     if(obj.response !== undefined){ assistantNode.textContent += obj.response; }
                                     else if(obj.choices && Array.isArray(obj.choices)){ obj.choices.forEach(c=>{ if(c.text) assistantNode.textContent += c.text; }); }
                                 }catch(_){ }
@@ -401,8 +434,18 @@ async def ui():
                         }
 
                         if(buffer.trim()){
-                            try{ const obj = JSON.parse(buffer); if(obj.response !== undefined) assistantNode.textContent += obj.response; }
-                            catch(_){ }
+                            try{
+                                const obj = JSON.parse(buffer);
+                                if(obj.response !== undefined) assistantNode.textContent += obj.response;
+                                if(obj.thinking !== undefined){
+                                    if(!wrapper.thinkingPre){
+                                        const tl=document.createElement('div'); tl.style.fontSize='12px'; tl.style.color='#9ca3af'; tl.textContent='Thinking'; tl.style.marginTop='6px';
+                                        const tp=document.createElement('pre'); tp.style.background='#fff7ed'; tp.style.padding='8px'; tp.style.borderRadius='6px'; tp.style.maxHeight='200px'; tp.style.overflow='auto'; tp.style.marginTop='6px';
+                                        wrapper.appendChild(tl); wrapper.appendChild(tp); wrapper.thinkingPre = tp; wrapper.thinkingLabel = tl;
+                                    }
+                                    wrapper.thinkingLabel.style.display='block'; wrapper.thinkingPre.style.display='block'; wrapper.thinkingPre.textContent += obj.thinking;
+                                }
+                            }catch(_){ }
                         }
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                     }catch(err){ appendChat('assistant', String(err)); }
@@ -550,6 +593,14 @@ async def ui():
                                 const obj = JSON.parse(t);
                                 if(obj && typeof obj === 'object' && obj.response !== undefined){
                                     pane.textContent = String(obj.response);
+                                    if(obj.thinking !== undefined){
+                                        const card = pane.parentElement;
+                                        if(card && card.thinkingPre){
+                                            card.thinkingLabel.style.display = 'block';
+                                            card.thinkingPre.style.display = 'block';
+                                            card.thinkingPre.textContent = String(obj.thinking);
+                                        }
+                                    }
                                 } else {
                                     pane.textContent = JSON.stringify(obj, null, 2);
                                 }
@@ -586,6 +637,14 @@ async def ui():
                                 if(!part.trim()) continue;
                                 try{
                                     const obj = JSON.parse(part);
+                                    if(obj.thinking !== undefined){
+                                        const card = pane.parentElement;
+                                        if(card && card.thinkingPre){
+                                            card.thinkingLabel.style.display = 'block';
+                                            card.thinkingPre.style.display = 'block';
+                                            card.thinkingPre.textContent += obj.thinking;
+                                        }
+                                    }
                                     if(obj.response !== undefined){
                                         appendText(pane, obj.response);
                                     } else if(obj.choices && Array.isArray(obj.choices)){
@@ -601,6 +660,7 @@ async def ui():
                             try{
                                 const obj = JSON.parse(buffer);
                                 if(obj.response !== undefined) appendText(pane, obj.response);
+                                if(obj.thinking !== undefined){ const card=pane.parentElement; if(card && card.thinkingPre){ card.thinkingLabel.style.display='block'; card.thinkingPre.style.display='block'; card.thinkingPre.textContent += obj.thinking; } }
                             }catch(_){
                                 // ignore trailing partial fragment
                             }
@@ -799,4 +859,4 @@ async def get_session(req: SessionGetRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, log_level="info", reload=True)
