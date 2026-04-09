@@ -30,6 +30,15 @@ curl -X POST http://localhost:8000/generate \
   -d '{"model": "gemma-4-E4B-it-IQ4_XS", "prompt": "こんにちは"}'
 ```
 
+### ストリーミング応答
+低遅延用途ではストリーミングを使えます。バックエンドは `text/event-stream` でそのまま中継します。
+
+```bash
+curl -N -X POST http://127.0.0.1:8000/generate/stream \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemma-4-E4B-it-IQ4_XS","prompt":"こんにちは"}'
+```
+
 ## 環境変数
 - `OLLAMA_URL` (default: `http://localhost:11434`)
 - `OLLAMA_GENERATE_PATH` (default: `/api/generate`)
