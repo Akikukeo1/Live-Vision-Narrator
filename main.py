@@ -262,7 +262,14 @@ async def ui():
                                 signal: controller.signal,
                             });
                             const t = await r.text();
-                            try{ pane.textContent = JSON.stringify(JSON.parse(t), null, 2); }
+                            try{
+                                const obj = JSON.parse(t);
+                                if(obj && typeof obj === 'object' && obj.response !== undefined){
+                                    pane.textContent = String(obj.response);
+                                } else {
+                                    pane.textContent = JSON.stringify(obj, null, 2);
+                                }
+                            }
                             catch(_){ pane.textContent = t; }
                             return;
                         }
@@ -298,11 +305,9 @@ async def ui():
                                         appendText(pane, obj.response);
                                     } else if(obj.choices && Array.isArray(obj.choices)){
                                         obj.choices.forEach(c=>{ if(c.text) appendText(pane, c.text); });
-                                    } else {
-                                        appendText(pane, part + '\n');
                                     }
                                 }catch(_){
-                                    appendText(pane, part + '\n');
+                                    // Ignore malformed fragments to avoid leaking raw payloads.
                                 }
                             }
                         }
@@ -311,9 +316,8 @@ async def ui():
                             try{
                                 const obj = JSON.parse(buffer);
                                 if(obj.response !== undefined) appendText(pane, obj.response);
-                                else appendText(pane, buffer);
                             }catch(_){
-                                appendText(pane, buffer);
+                                // ignore trailing partial fragment
                             }
                         }
                     }catch(err){
