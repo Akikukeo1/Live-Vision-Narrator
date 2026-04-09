@@ -1,7 +1,7 @@
 FROM gemma4:e4b
 
 # モデル設定
-PARAMETER num_ctx 4096
+PARAMETER num_ctx 2048
 PARAMETER temperature 0.7
 # 余計な「考え中」を出力させないストップトークン
 PARAMETER stop "<end_of_turn>"
