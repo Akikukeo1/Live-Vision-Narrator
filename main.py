@@ -36,8 +36,15 @@ class SessionGetRequest(BaseModel):
 
 def build_payload(req: GenerateRequest) -> dict:
     payload: dict = {"model": req.model, "prompt": req.prompt}
+    # Forward parameters to Ollama, but strip server-only flags like 'reveal_thoughts'
     if req.parameters:
-        payload.update(req.parameters)
+        params_to_forward = {k: v for k, v in req.parameters.items() if k != "reveal_thoughts"}
+        if params_to_forward:
+            payload.update(params_to_forward)
+            # Promote options.think to top-level 'think' so Ollama sees it
+            opts = payload.get("options")
+            if isinstance(opts, dict) and "think" in opts:
+                payload["think"] = opts.get("think")
     if req.session_id and "context" not in payload:
         ctx = SESSION_CONTEXTS.get(req.session_id)
         if ctx is not None:
@@ -64,6 +71,16 @@ def sanitize_response_text(text: str) -> str:
     # Remove common think tags if present in model output.
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
     return cleaned
+
+
+def should_reveal_thoughts(req: GenerateRequest | None) -> bool:
+    """Return True when the client requested to reveal internal thinking/CoT.
+
+    We treat `parameters.reveal_thoughts` truthy as the signal. Accepts None.
+    """
+    if not req or not req.parameters or not isinstance(req.parameters, dict):
+        return False
+    return bool(req.parameters.get("reveal_thoughts"))
 
 
 def append_session_history(session_id: str | None, user_text: str, assistant_text: str) -> None:
@@ -171,6 +188,7 @@ async def ui():
                 <div class="button-row big-btn-container">
                     <button id="resetSessionBtn" type="button" class="big-btn">記憶リセット</button>
                     <button id="showSessionBtn" type="button" class="big-btn">記憶表示</button>
+                    <button id="thinkBtn" type="button" class="big-btn">Thinking発動</button>
                 </div>
 
                 <label for="model">Model</label>
@@ -187,6 +205,7 @@ async def ui():
                     <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
                     <label><input id="parallelToggle" type="checkbox"/> 並列許可（ONで複数同時実行）</label>
                     <label><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
+                    <label><input id="showCoTToggle" type="checkbox"/> CoT表示（オプション）</label>
                 </div>
 
                 <button id="sendBtn" type="button" class="big-btn">送信</button>
@@ -212,9 +231,12 @@ async def ui():
                 const sendBtn = document.getElementById('sendBtn');
                 const resetSessionBtn = document.getElementById('resetSessionBtn');
                 const showSessionBtn = document.getElementById('showSessionBtn');
+                const thinkBtn = document.getElementById('thinkBtn');
+                const showCoTToggle = document.getElementById('showCoTToggle');
                 const responses = document.getElementById('responses');
                 let activeController = null;
                 let requestId = 0;
+                let thinkToggle = false;
 
                 function createResponsePane(id, replaceExisting){
                     if(replaceExisting){
@@ -261,6 +283,15 @@ async def ui():
                 if(sendBtn){
                     sendBtn.addEventListener('click', ()=>{
                         try{ form.requestSubmit(); }catch(err){ form.dispatchEvent(new Event('submit', {cancelable:true})); }
+                    });
+                }
+
+                if(thinkBtn){
+                    thinkBtn.addEventListener('click', ()=>{
+                        thinkToggle = !thinkToggle;
+                        thinkBtn.textContent = thinkToggle ? 'Thinking: ON' : 'Thinking発動';
+                        thinkBtn.classList.toggle('active', thinkToggle);
+                        console.log('Thinking toggle ->', thinkToggle);
                     });
                 }
 
@@ -320,7 +351,12 @@ async def ui():
                     appendChat('user', text);
                     chatInput.value = '';
 
-                    const body = { model: modelName, prompt: text, parameters: {}, session_id: sessionId };
+                    // Build parameters for chat request; include think (top-level) and optional reveal_thoughts
+                    let chatParams = {};
+                    if(thinkToggle){ chatParams.think = true; }
+                    if(showCoTToggle && showCoTToggle.checked){ chatParams.reveal_thoughts = true; }
+
+                    const body = { model: modelName, prompt: text, parameters: chatParams, session_id: sessionId };
 
                     try{
                         if(!streaming){
@@ -466,6 +502,13 @@ async def ui():
                         return;
                     }
 
+                    // Inject Thinking toggle or reveal flags into parameters (server strips reveal_thoughts before forwarding)
+                    parameters = parameters || {};
+                    if(thinkToggle){ parameters.think = true; }
+                    if(showCoTToggle && showCoTToggle.checked){ parameters.reveal_thoughts = true; }
+
+                    console.log('Request parameters:', parameters);
+
                     if(allowParallel){
                         // On new parallel request, remove already-finished old requests.
                         pruneFinishedCards();
@@ -481,6 +524,9 @@ async def ui():
                     }
 
                     const pane = createResponsePane(++requestId, !allowParallel);
+                    // If this request will engage Thinking, surface a friendly waiting message
+                    const isThinkingNow = parameters && parameters.think;
+                    if(isThinkingNow){ pane.textContent = 'Thinking中だから待ってね〜\n'; }
                     const body = { model: modelName, prompt, parameters, session_id: sessionId };
 
                     console.log('Form submit: session=%s, model=%s, prompt_len=%d, streaming=%s, parallel=%s', sessionId, modelName, prompt.length, stream, allowParallel);
@@ -589,6 +635,9 @@ async def generate(req: GenerateRequest):
         raise HTTPException(status_code=503, detail="Service not started")
 
     payload = build_payload(req)
+    # Log whether the request will think / reveal thoughts
+    reveal = should_reveal_thoughts(req)
+    logging.info("/generate requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
     start = time.perf_counter()
     try:
         r = await client.post(f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
@@ -604,8 +653,16 @@ async def generate(req: GenerateRequest):
     # Return whatever Ollama returns (assumed JSON)
     try:
         data = r.json()
+        # Optionally reveal "thinking"/CoT to the client when requested via parameters
+        if not reveal:
+            data.pop("thinking", None)
+
         if isinstance(data.get("response"), str):
-            data["response"] = sanitize_response_text(data["response"])
+            if not reveal:
+                data["response"] = sanitize_response_text(data["response"])
+            else:
+                # keep response intact when revealing thoughts
+                data["response"] = data["response"]
         update_session_context(req.session_id, data)
         if isinstance(data.get("response"), str):
             append_session_history(req.session_id, req.prompt, data["response"])
@@ -639,6 +696,10 @@ async def generate_stream(req: GenerateRequest):
             await res.aclose()
             raise HTTPException(status_code=res.status_code, detail=text.decode("utf-8", errors="replace"))
 
+        # Log think/reveal for streaming requests too
+        reveal = should_reveal_thoughts(req)
+        logging.info("/generate/stream requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
+
         async def proxy():
             latest_ctx = None
             assistant_parts: list[str] = []
@@ -660,12 +721,17 @@ async def generate_stream(req: GenerateRequest):
                         latest_ctx = obj["context"]
 
                     if isinstance(obj.get("response"), str):
-                        cleaned = sanitize_response_text(obj["response"])
-                        obj["response"] = cleaned
-                        if cleaned:
-                            assistant_parts.append(cleaned)
+                        if not reveal:
+                            cleaned = sanitize_response_text(obj["response"])
+                            obj["response"] = cleaned
+                            if cleaned:
+                                assistant_parts.append(cleaned)
+                        else:
+                            # keep original response (including possible <think> sections)
+                            assistant_parts.append(obj["response"])
 
-                    if "thinking" in obj:
+                    # By default, remove any 'thinking' field unless the client requested it
+                    if not reveal:
                         obj.pop("thinking", None)
 
                     out_line = json.dumps(obj, ensure_ascii=False) + "\n"
