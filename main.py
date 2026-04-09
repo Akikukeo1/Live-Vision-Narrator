@@ -167,10 +167,20 @@ async def ui():
                 <div style="margin-top:8px">
                     <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
                     <label><input id="parallelToggle" type="checkbox"/> 並列許可（ONで複数同時実行）</label>
+                    <label style="margin-left:12px"><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
                 </div>
 
                 <button id="sendBtn" type="button" class="big-btn">送信</button>
             </form>
+
+            <div id="chatMode" style="display:none;margin-top:14px;max-width:95%">
+                <h3>チャット</h3>
+                <div id="chatMessages" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;max-height:360px;overflow:auto;background:#fff"></div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <input id="chatInput" placeholder="メッセージを入力..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #d1d5db" />
+                    <button id="chatSendBtn" class="big-btn" type="button">送信</button>
+                </div>
+            </div>
 
             <h3>Response</h3>
             <div id="responses"></div>
@@ -235,6 +245,129 @@ async def ui():
                     });
                 }
 
+                // Chat mode toggle handling
+                const chatModeToggle = document.getElementById('chatModeToggle');
+                const chatModeDiv = document.getElementById('chatMode');
+                const chatMessages = document.getElementById('chatMessages');
+                const chatInput = document.getElementById('chatInput');
+                const chatSendBtn = document.getElementById('chatSendBtn');
+
+                function setModeChat(enabled){
+                    if(enabled){
+                        document.getElementById('prompt').style.display = 'none';
+                        document.getElementById('params').style.display = 'none';
+                        chatModeDiv.style.display = 'block';
+                    } else {
+                        document.getElementById('prompt').style.display = 'block';
+                        document.getElementById('params').style.display = 'block';
+                        chatModeDiv.style.display = 'none';
+                    }
+                }
+
+                if(chatModeToggle){
+                    chatModeToggle.addEventListener('change', (e)=>{
+                        setModeChat(e.target.checked);
+                    });
+                }
+
+                function appendChat(role, text){
+                    const wrap = document.createElement('div');
+                    wrap.style.margin = '6px 0';
+                    const bubble = document.createElement('div');
+                    bubble.style.display = 'inline-block';
+                    bubble.style.padding = '8px 12px';
+                    bubble.style.borderRadius = '12px';
+                    bubble.style.maxWidth = '86%';
+                    bubble.style.whiteSpace = 'pre-wrap';
+                    bubble.textContent = text;
+                    if(role === 'user'){
+                        bubble.style.background = '#e6f0ff';
+                        bubble.style.alignSelf = 'flex-end';
+                        wrap.style.textAlign = 'right';
+                    } else {
+                        bubble.style.background = '#f1f5f9';
+                        bubble.style.textAlign = 'left';
+                    }
+                    wrap.appendChild(bubble);
+                    chatMessages.appendChild(wrap);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+
+                async function sendChatMessage(streaming){
+                    const modelName = document.getElementById('model').value;
+                    const sessionId = document.getElementById('sessionId').value || 'default';
+                    const text = chatInput.value || '';
+                    if(!text.trim()){ return; }
+                    appendChat('user', text);
+                    chatInput.value = '';
+
+                    const body = { model: modelName, prompt: text, parameters: {}, session_id: sessionId };
+
+                    try{
+                        if(!streaming){
+                            const r = await fetch('/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                            if(!r.ok){ appendChat('assistant', 'Error: ' + r.status); return; }
+                            const t = await r.text();
+                            try{ const obj = JSON.parse(t); appendChat('assistant', String(obj.response ?? t)); }
+                            catch{ appendChat('assistant', t); }
+                            return;
+                        }
+
+                        const r = await fetch('/generate/stream', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                        if(!r.ok){ appendChat('assistant', 'Error: ' + r.status); return; }
+                        const reader = r.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
+                        let assistantNode = document.createElement('div');
+                        assistantNode.style.display = 'inline-block';
+                        assistantNode.style.padding = '8px 12px';
+                        assistantNode.style.borderRadius = '12px';
+                        assistantNode.style.maxWidth = '86%';
+                        assistantNode.style.whiteSpace = 'pre-wrap';
+                        assistantNode.style.background = '#f1f5f9';
+                        const wrapper = document.createElement('div'); wrapper.style.margin='6px 0'; wrapper.appendChild(assistantNode);
+                        chatMessages.appendChild(wrapper);
+
+                        while(true){
+                            const { done, value } = await reader.read();
+                            if(done) break;
+                            buffer += decoder.decode(value, { stream: true });
+                            const parts = buffer.split(/\r?\n/);
+                            buffer = parts.pop();
+                            for(const part of parts){
+                                if(!part.trim()) continue;
+                                try{
+                                    const obj = JSON.parse(part);
+                                    if(obj.response !== undefined){ assistantNode.textContent += obj.response; }
+                                    else if(obj.choices && Array.isArray(obj.choices)){ obj.choices.forEach(c=>{ if(c.text) assistantNode.textContent += c.text; }); }
+                                }catch(_){ }
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+                        }
+
+                        if(buffer.trim()){
+                            try{ const obj = JSON.parse(buffer); if(obj.response !== undefined) assistantNode.textContent += obj.response; }
+                            catch(_){ }
+                        }
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }catch(err){ appendChat('assistant', String(err)); }
+                }
+
+                if(chatSendBtn){
+                    chatSendBtn.addEventListener('click', ()=>{
+                        const streaming = document.getElementById('streamToggle').checked;
+                        sendChatMessage(streaming);
+                    });
+                }
+
+                chatInput.addEventListener && chatInput.addEventListener('keydown', (e)=>{
+                    if(e.key === 'Enter' && !e.shiftKey){
+                        e.preventDefault();
+                        const streaming = document.getElementById('streamToggle').checked;
+                        sendChatMessage(streaming);
+                    }
+                });
+
                 if(resetSessionBtn){
                     resetSessionBtn.addEventListener('click', async ()=>{
                         const sessionId = document.getElementById('sessionId').value || 'default';
@@ -249,6 +382,13 @@ async def ui():
                             const t = await r.text();
                             pane.textContent = t;
                             if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
+                            // Also clear chat UI if present so visual state matches server reset
+                            try{
+                                const chatMessages = document.getElementById('chatMessages');
+                                if(chatMessages){ chatMessages.innerHTML = ''; }
+                                const chatInput = document.getElementById('chatInput');
+                                if(chatInput){ chatInput.value = ''; }
+                            }catch(_){ }
                         }catch(err){
                             pane.textContent = String(err);
                             if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
