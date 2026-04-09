@@ -89,19 +89,21 @@ async def ui():
                 <textarea id="params" name="params" rows="4" style="width:95%;margin-top:6px">{
                 }</textarea>
 
-                <div style="margin-top:8px">
-                    <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
-                </div>
+                  <div style="margin-top:8px">
+                        <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
+                    </div>
 
-                <button type="submit">送信</button>
+                    <button id="sendBtn" type="button">送信</button>
             </form>
 
             <h3>Response</h3>
             <pre id="out"></pre>
 
-            <script>
-                const out = document.getElementById('out');
-                const form = document.getElementById('form');
+                        <script>
+                            console.log('Ollama UI script loaded');
+                            window.addEventListener('error', (e)=>{ console.error('UI error', e); });
+                            const out = document.getElementById('out');
+                            const form = document.getElementById('form');
 
                 function appendText(text){
                     out.textContent += text;
