@@ -138,6 +138,8 @@ async def ui():
                 body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:12px;background:#fafafa}
                 .container{max-width:var(--max-width);margin:0 auto;padding:0 12px}
                 label{display:block;margin-top:8px}
+                .toggles label{display:inline-flex;align-items:center;gap:8px;margin-right:12px;margin-top:0}
+                .toggles input[type="checkbox"]{margin:0 6px 0 0}
                 input[type="text"], input[type="search"], input[type="url"], input[type="tel"], input[type="email"], input[type="number"], input[type="password"], select, textarea{font-family:inherit;width:100%}
                 label > input[type="checkbox"]{width:auto;margin-right:8px;vertical-align:middle}
                 #out{background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto}
@@ -181,10 +183,10 @@ async def ui():
                 <textarea id="params" name="params" rows="4" style="width:95%;margin-top:6px">{
                 }</textarea>
 
-                <div style="margin-top:8px">
+                <div class="toggles" style="margin-top:8px">
                     <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
                     <label><input id="parallelToggle" type="checkbox"/> 並列許可（ONで複数同時実行）</label>
-                    <label style="margin-left:12px"><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
+                    <label><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
                 </div>
 
                 <button id="sendBtn" type="button" class="big-btn">送信</button>
