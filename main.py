@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 import os
 import json
 import re
+import time
+import logging
 import httpx
 
 app = FastAPI(title="Ollama Proxy (FastAPI)")
@@ -13,6 +15,8 @@ OLLAMA_GENERATE_PATH = os.getenv("OLLAMA_GENERATE_PATH", "/api/generate")
 OLLAMA_MODELS_PATH = os.getenv("OLLAMA_MODELS_PATH", "/api/models")
 WARMUP_MODEL = os.getenv("WARMUP_MODEL")
 DEFAULT_THINK = os.getenv("OLLAMA_DEFAULT_THINK", "false").lower() in {"1", "true", "yes", "on"}
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 
 
 class GenerateRequest(BaseModel):
@@ -419,10 +423,13 @@ async def generate(req: GenerateRequest):
         raise HTTPException(status_code=503, detail="Service not started")
 
     payload = build_payload(req)
-
+    start = time.perf_counter()
     try:
         r = await client.post(f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logging.info("/generate session=%s model=%s elapsed_ms=%.1f", req.session_id, req.model, elapsed_ms)
     except Exception as e:
+        logging.exception("Error during /generate request")
         raise HTTPException(status_code=500, detail=str(e))
 
     if r.status_code >= 400:
@@ -455,8 +462,11 @@ async def generate_stream(req: GenerateRequest):
 
     try:
         # Keep upstream stream open for as long as StreamingResponse is iterating.
+        start = time.perf_counter()
         request = client.build_request("POST", f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
         res = await client.send(request, stream=True)
+        send_ms = (time.perf_counter() - start) * 1000
+        logging.info("/generate/stream session=%s model=%s send_ms=%.1f", req.session_id, req.model, send_ms)
 
         if res.status_code >= 400:
             text = await res.aread()
@@ -466,10 +476,15 @@ async def generate_stream(req: GenerateRequest):
         async def proxy():
             latest_ctx = None
             assistant_parts: list[str] = []
+            first_ms = None
             try:
                 async for line in res.aiter_lines():
                     if not line:
                         continue
+                    # Record time-to-first-chunk
+                    if first_ms is None:
+                        first_ms = (time.perf_counter() - start) * 1000
+                        logging.info("/generate/stream session=%s model=%s first_chunk_ms=%.1f send_ms=%.1f", req.session_id, req.model, first_ms, send_ms)
                     try:
                         obj = json.loads(line)
                     except Exception:
@@ -492,8 +507,11 @@ async def generate_stream(req: GenerateRequest):
             except httpx.StreamClosed:
                 return
             except Exception:
+                logging.exception("Error while proxying stream")
                 return
             finally:
+                total_ms = (time.perf_counter() - start) * 1000
+                logging.info("/generate/stream session=%s model=%s total_ms=%.1f first_chunk_ms=%s", req.session_id, req.model, total_ms, f"{first_ms:.1f}" if first_ms is not None else "None")
                 if latest_ctx is not None:
                     update_session_context(req.session_id, {"context": latest_ctx})
                 if assistant_parts:
