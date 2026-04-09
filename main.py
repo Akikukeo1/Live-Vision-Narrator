@@ -79,18 +79,15 @@ async def ui():
         <body>
             <h2>Ollama Proxy — Test UI</h2>
             <form id="form">
-                <label>Model
-                    <input id="model" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
-                </label>
+                <label for="model">Model</label>
+                <input id="model" name="model" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
 
-                <label>Prompt
-                    <textarea id="prompt" rows="6" style="width:80%">こんにちは</textarea>
-                </label>
+                <label for="prompt">Prompt</label>
+                <textarea id="prompt" name="prompt" rows="6" style="width:95%;margin-top:6px">こんにちは</textarea>
 
-                <label>Additional JSON parameters (optional)
-                    <textarea id="params" rows="4" style="width:80%">{
+                <label for="params">Additional JSON parameters (optional)</label>
+                <textarea id="params" name="params" rows="4" style="width:95%;margin-top:6px">{
                 }</textarea>
-                </label>
 
                 <div style="margin-top:8px">
                     <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
