@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from pathlib import Path
 import os
 import json
 import re
@@ -9,6 +10,35 @@ import logging
 import httpx
 
 app = FastAPI(title="Ollama Proxy (FastAPI)")
+
+# Placeholder SYSTEM variable (can be overridden by loading profiles)
+SYSTEM = ""
+
+# Cache for local system profiles: name -> system prompt text
+SYSTEM_PROFILES: dict[str, str] = {}
+
+def load_system_profile(name: str) -> str | None:
+    """Load and cache a named local system profile (e.g. Modelfile.detailed).
+
+    Only allowed profile names should be loaded. Returns profile text or None.
+    """
+    if not name:
+        return None
+    if name in SYSTEM_PROFILES:
+        return SYSTEM_PROFILES[name]
+    allowed = {
+        "default": Path("Modelfile"),
+        "detailed": Path("Modelfile.detailed"),
+    }
+    path = allowed.get(name)
+    if not path or not path.exists():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+        SYSTEM_PROFILES[name] = text
+        return text
+    except Exception:
+        return None
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_GENERATE_PATH = os.getenv("OLLAMA_GENERATE_PATH", "/api/generate")
@@ -36,19 +66,36 @@ class SessionGetRequest(BaseModel):
 
 def build_payload(req: GenerateRequest) -> dict:
     payload: dict = {"model": req.model, "prompt": req.prompt}
-    # Forward parameters to Ollama, but strip server-only flags like 'reveal_thoughts'
-    if req.parameters:
-        params_to_forward = {k: v for k, v in req.parameters.items() if k != "reveal_thoughts"}
+    # Server-only parameter keys that should NOT be forwarded to the model
+    server_keys = {"reveal_thoughts", "save_inner", "inner_detail", "system_profile", "system_override"}
+
+    if req.parameters and isinstance(req.parameters, dict):
+        # If client requested reveal_thoughts, inform model via prompt prefix
+        if bool(req.parameters.get("reveal_thoughts")):
+            payload["prompt"] = "[REVEAL_INNER_VOICE]\n" + payload["prompt"]
+        # Forward client parameters except server-only controls
+        params_to_forward = {k: v for k, v in req.parameters.items() if k not in server_keys}
         if params_to_forward:
             payload.update(params_to_forward)
             # Promote options.think to top-level 'think' so Ollama sees it
             opts = payload.get("options")
             if isinstance(opts, dict) and "think" in opts:
                 payload["think"] = opts.get("think")
+
+        # If a system profile was requested, try to load it and use it as the system override
+        profile = req.parameters.get("system_profile")
+        if isinstance(profile, str) and profile.strip():
+            profile_text = load_system_profile(profile.strip())
+            if profile_text:
+                # Only attach the system override if the client explicitly asked for it.
+                # We do NOT log the content of the profile.
+                payload["system"] = profile_text
+
     if req.session_id and "context" not in payload:
         ctx = SESSION_CONTEXTS.get(req.session_id)
         if ctx is not None:
             payload["context"] = ctx
+
     # Respect explicit request parameter, otherwise enforce configured default.
     payload.setdefault("think", DEFAULT_THINK)
     options = payload.get("options")
@@ -203,9 +250,21 @@ async def ui():
 
                 <div class="toggles" style="margin-top:8px">
                     <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
-                    <label><input id="parallelToggle" type="checkbox"/> 並列許可（ONで複数同時実行）</label>
+                    <label><input id="parallelToggle" type="checkbox"/> 並列許可</label>
                     <label><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
-                    <label><input id="showCoTToggle" type="checkbox"/> CoT表示（オプション）</label>
+                    <label><input id="showCoTToggle" type="checkbox"/> CoT表示</label>
+                                        <label><input id="showInnerToggle" type="checkbox"/> 心の声を表示する</label>
+                                        <label><input id="saveInnerToggle" type="checkbox"/> 心の声を保存する</label>
+                                        <label for="innerDetailSelect">詳しく表示</label>
+                                        <select id="innerDetailSelect" name="innerDetailSelect" style="margin-left:6px">
+                                                <option value="short">短い</option>
+                                                <option value="long">詳しい</option>
+                                        </select>
+                                        <label for="systemProfile" style="margin-left:12px">System Profile</label>
+                                        <select id="systemProfile" name="systemProfile" style="width:140px;margin-left:6px">
+                                            <option value="">(default)</option>
+                                            <option value="detailed">detailed</option>
+                                        </select>
                 </div>
 
                 <button id="sendBtn" type="button" class="big-btn">送信</button>
@@ -233,6 +292,10 @@ async def ui():
                 const showSessionBtn = document.getElementById('showSessionBtn');
                 const thinkBtn = document.getElementById('thinkBtn');
                 const showCoTToggle = document.getElementById('showCoTToggle');
+                const showInnerToggle = document.getElementById('showInnerToggle');
+                const saveInnerToggle = document.getElementById('saveInnerToggle');
+                const innerDetailSelect = document.getElementById('innerDetailSelect');
+                const systemProfile = document.getElementById('systemProfile');
                 const responses = document.getElementById('responses');
                 let activeController = null;
                 let requestId = 0;
@@ -377,7 +440,15 @@ async def ui():
                     // Build parameters for chat request; include think (top-level) and optional reveal_thoughts
                     let chatParams = {};
                     if(thinkToggle){ chatParams.think = true; }
+                    // CoT toggle (existing)
                     if(showCoTToggle && showCoTToggle.checked){ chatParams.reveal_thoughts = true; }
+                    // Inner-voice toggles (UI)
+                    if(showInnerToggle && showInnerToggle.checked){ chatParams.reveal_thoughts = true; }
+                        // Request the model to perform internal thinking when inner-voice is on
+                        if(showInnerToggle && showInnerToggle.checked){ chatParams.options = chatParams.options || {}; chatParams.options.think = true; }
+                    if(saveInnerToggle && saveInnerToggle.checked){ chatParams.save_inner = true; }
+                    if(innerDetailSelect && innerDetailSelect.value){ chatParams.inner_detail = innerDetailSelect.value; }
+                    if(systemProfile && systemProfile.value){ chatParams.system_profile = systemProfile.value; }
 
                     const body = { model: modelName, prompt: text, parameters: chatParams, session_id: sessionId };
 
@@ -549,6 +620,11 @@ async def ui():
                     parameters = parameters || {};
                     if(thinkToggle){ parameters.think = true; }
                     if(showCoTToggle && showCoTToggle.checked){ parameters.reveal_thoughts = true; }
+                    // UI-driven inner-voice controls
+                    if(showInnerToggle && showInnerToggle.checked){ parameters.reveal_thoughts = true; parameters.options = parameters.options || {}; parameters.options.think = true; }
+                    if(saveInnerToggle && saveInnerToggle.checked){ parameters.save_inner = true; }
+                    if(innerDetailSelect && innerDetailSelect.value){ parameters.inner_detail = innerDetailSelect.value; }
+                    if(systemProfile && systemProfile.value){ parameters.system_profile = systemProfile.value; }
 
                     console.log('Request parameters:', parameters);
 
@@ -723,9 +799,30 @@ async def generate(req: GenerateRequest):
             else:
                 # keep response intact when revealing thoughts
                 data["response"] = data["response"]
+
+        # Persist session context and main assistant response
         update_session_context(req.session_id, data)
         if isinstance(data.get("response"), str):
             append_session_history(req.session_id, req.prompt, data["response"])
+
+        # If client requested saving inner thoughts, extract and store them
+        save_inner = bool(req.parameters and isinstance(req.parameters, dict) and req.parameters.get("save_inner"))
+        if reveal and save_inner:
+            thinking_text = None
+            # Prefer explicit 'thinking' field
+            if isinstance(data.get("thinking"), str):
+                thinking_text = data.get("thinking")
+            else:
+                # Fallback: extract <inner_voice>...</inner_voice> from response
+                resp = data.get("response")
+                if isinstance(resp, str):
+                    m = re.search(r"<inner_voice>([\s\S]*?)</inner_voice>", resp, flags=re.IGNORECASE)
+                    if m:
+                        thinking_text = m.group(1).strip()
+            if thinking_text:
+                hist = SESSION_HISTORY.setdefault(req.session_id, [])
+                hist.append({"role": "assistant.inner", "text": thinking_text})
+
         return data
     except Exception:
         return {"raw": r.text}
@@ -763,6 +860,7 @@ async def generate_stream(req: GenerateRequest):
         async def proxy():
             latest_ctx = None
             assistant_parts: list[str] = []
+            thinking_parts: list[str] = []
             first_ms = None
             try:
                 async for line in res.aiter_lines():
@@ -790,6 +888,10 @@ async def generate_stream(req: GenerateRequest):
                             # keep original response (including possible <think> sections)
                             assistant_parts.append(obj["response"])
 
+                    # Collect thinking parts when present and reveal requested
+                    if obj.get("thinking") is not None:
+                        if reveal:
+                            thinking_parts.append(obj.get("thinking"))
                     # By default, remove any 'thinking' field unless the client requested it
                     if not reveal:
                         obj.pop("thinking", None)
@@ -808,6 +910,11 @@ async def generate_stream(req: GenerateRequest):
                     update_session_context(req.session_id, {"context": latest_ctx})
                 if assistant_parts:
                     append_session_history(req.session_id, req.prompt, "".join(assistant_parts))
+                    # Persist thinking parts if requested to save
+                    save_inner = bool(req.parameters and isinstance(req.parameters, dict) and req.parameters.get("save_inner"))
+                    if reveal and save_inner and thinking_parts:
+                        hist = SESSION_HISTORY.setdefault(req.session_id, [])
+                        hist.append({"role": "assistant.inner", "text": "\n".join(thinking_parts)})
                 await res.aclose()
 
         # Ollama returns newline-delimited JSON chunks.
