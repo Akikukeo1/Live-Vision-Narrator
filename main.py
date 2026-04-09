@@ -10,12 +10,22 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_GENERATE_PATH = os.getenv("OLLAMA_GENERATE_PATH", "/api/generate")
 OLLAMA_MODELS_PATH = os.getenv("OLLAMA_MODELS_PATH", "/api/models")
 WARMUP_MODEL = os.getenv("WARMUP_MODEL")
+DEFAULT_THINK = os.getenv("OLLAMA_DEFAULT_THINK", "false").lower() in {"1", "true", "yes", "on"}
 
 
 class GenerateRequest(BaseModel):
     model: str
     prompt: str
     parameters: dict | None = None
+
+
+def build_payload(req: GenerateRequest) -> dict:
+    payload: dict = {"model": req.model, "prompt": req.prompt}
+    if req.parameters:
+        payload.update(req.parameters)
+    # Respect explicit request parameter, otherwise enforce configured default.
+    payload.setdefault("think", DEFAULT_THINK)
+    return payload
 
 
 client: httpx.AsyncClient | None = None
@@ -63,7 +73,7 @@ async def root():
 
 @app.get("/ui", response_class=HTMLResponse)
 async def ui():
-    html = """
+    html = r"""
     <!doctype html>
     <html>
         <head>
@@ -127,6 +137,7 @@ async def ui():
                     try{ parameters = JSON.parse(document.getElementById('params').value) }catch(err){ out.textContent = 'Invalid JSON in parameters'; return }
 
                     const body = { model: modelName, prompt, parameters };
+                    console.log('Form submit: model=%s, prompt_len=%d, streaming=%s', modelName, prompt.length, document.getElementById('streamToggle').checked);
                     const stream = document.getElementById('streamToggle').checked;
 
                     if(!stream){
@@ -141,14 +152,18 @@ async def ui():
 
                     // Streaming request
                     try{
+                        console.log('Fetching /generate/stream...');
                         const r = await fetch('/generate/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                        console.log('Response status:', r.status, r.statusText);
                         if(!r.ok){ out.textContent = 'Error: '+r.status; return }
                         const reader = r.body.getReader();
                         const decoder = new TextDecoder();
                         let buffer = '';
+                        let chunkCount = 0;
                         while(true){
                             const { done, value } = await reader.read();
-                            if(done) break;
+                            if(done) { console.log('Stream ended after', chunkCount, 'chunks'); break; }
+                            chunkCount += 1;
                             buffer += decoder.decode(value, { stream: true });
                             const parts = buffer.split(/\r?\n/);
                             buffer = parts.pop();
@@ -186,9 +201,7 @@ async def generate(req: GenerateRequest):
     if client is None:
         raise HTTPException(status_code=503, detail="Service not started")
 
-    payload: dict = {"model": req.model, "prompt": req.prompt}
-    if req.parameters:
-        payload.update(req.parameters)
+    payload = build_payload(req)
 
     try:
         r = await client.post(f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
@@ -215,24 +228,32 @@ async def generate_stream(req: GenerateRequest):
     if client is None:
         raise HTTPException(status_code=503, detail="Service not started")
 
-    payload: dict = {"model": req.model, "prompt": req.prompt}
-    if req.parameters:
-        payload.update(req.parameters)
+    payload = build_payload(req)
 
     try:
-        # Use httpx stream to proxy bytes as they arrive from Ollama
-        async with client.stream("POST", f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload, timeout=None) as res:
-            if res.status_code >= 400:
-                text = await res.aread()
-                raise HTTPException(status_code=res.status_code, detail=text.decode('utf-8', errors='replace'))
+        # Keep upstream stream open for as long as StreamingResponse is iterating.
+        request = client.build_request("POST", f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
+        res = await client.send(request, stream=True)
 
-            async def proxy():
+        if res.status_code >= 400:
+            text = await res.aread()
+            await res.aclose()
+            raise HTTPException(status_code=res.status_code, detail=text.decode("utf-8", errors="replace"))
+
+        async def proxy():
+            try:
                 async for chunk in res.aiter_bytes():
-                    if not chunk:
-                        continue
-                    yield chunk
+                    if chunk:
+                        yield chunk
+            except httpx.StreamClosed:
+                return
+            except Exception:
+                return
+            finally:
+                await res.aclose()
 
-            return StreamingResponse(proxy(), media_type="text/event-stream")
+        # Ollama returns newline-delimited JSON chunks.
+        return StreamingResponse(proxy(), media_type="application/x-ndjson")
     except HTTPException:
         raise
     except Exception as e:
@@ -259,9 +280,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")
-def main():
-    print("Hello from live-vision-narrator!")
-
-
-if __name__ == "__main__":
-    main()
