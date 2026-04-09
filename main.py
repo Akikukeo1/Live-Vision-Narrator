@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
 import json
+import re
 import httpx
 
 app = FastAPI(title="Ollama Proxy (FastAPI)")
@@ -15,7 +16,7 @@ DEFAULT_THINK = os.getenv("OLLAMA_DEFAULT_THINK", "false").lower() in {"1", "tru
 
 
 class GenerateRequest(BaseModel):
-    model: str
+    model: str = Field(min_length=1)
     prompt: str
     parameters: dict | None = None
     session_id: str | None = None
@@ -39,6 +40,11 @@ def build_payload(req: GenerateRequest) -> dict:
             payload["context"] = ctx
     # Respect explicit request parameter, otherwise enforce configured default.
     payload.setdefault("think", DEFAULT_THINK)
+    options = payload.get("options")
+    if isinstance(options, dict):
+        options.setdefault("think", DEFAULT_THINK)
+    elif options is None:
+        payload["options"] = {"think": DEFAULT_THINK}
     return payload
 
 
@@ -50,8 +56,27 @@ def update_session_context(session_id: str | None, data: dict) -> None:
         SESSION_CONTEXTS[session_id] = ctx
 
 
+def sanitize_response_text(text: str) -> str:
+    # Remove common think tags if present in model output.
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    return cleaned
+
+
+def append_session_history(session_id: str | None, user_text: str, assistant_text: str) -> None:
+    if not session_id:
+        return
+    history = SESSION_HISTORY.setdefault(session_id, [])
+    history.append({"role": "user", "text": user_text})
+    history.append({"role": "assistant", "text": assistant_text})
+    # Keep only recent history to avoid unbounded memory growth.
+    max_items = 40
+    if len(history) > max_items:
+        SESSION_HISTORY[session_id] = history[-max_items:]
+
+
 client: httpx.AsyncClient | None = None
 SESSION_CONTEXTS: dict[str, list[int]] = {}
+SESSION_HISTORY: dict[str, list[dict[str, str]]] = {}
 
 
 @app.on_event("startup")
@@ -120,7 +145,7 @@ async def ui():
                 </div>
 
                 <label for="model">Model</label>
-                <input id="model" name="model" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
+                <input id="model" name="model" value="live-narrator" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
 
                 <label for="prompt">Prompt</label>
                 <textarea id="prompt" name="prompt" rows="6" style="width:95%;margin-top:6px">こんにちは</textarea>
@@ -256,6 +281,13 @@ async def ui():
                     const stream = document.getElementById('streamToggle').checked;
                     const allowParallel = document.getElementById('parallelToggle').checked;
 
+                    if(!modelName || !modelName.trim()){
+                        const pane = createResponsePane(++requestId, !allowParallel);
+                        pane.textContent = 'Model is required (例: live-narrator)';
+                        if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
+                        return;
+                    }
+
                     let parameters = {};
                     try{ parameters = JSON.parse(document.getElementById('params').value); }
                     catch(err){
@@ -293,6 +325,11 @@ async def ui():
                                 body:JSON.stringify(body),
                                 signal: controller.signal,
                             });
+                            if(!r.ok){
+                                const errText = await r.text();
+                                pane.textContent = 'Error: ' + r.status + '\n' + errText;
+                                return;
+                            }
                             const t = await r.text();
                             try{
                                 const obj = JSON.parse(t);
@@ -315,7 +352,8 @@ async def ui():
                         });
 
                         if(!r.ok){
-                            pane.textContent = 'Error: ' + r.status;
+                            const errText = await r.text();
+                            pane.textContent = 'Error: ' + r.status + '\n' + errText;
                             return;
                         }
 
@@ -393,7 +431,11 @@ async def generate(req: GenerateRequest):
     # Return whatever Ollama returns (assumed JSON)
     try:
         data = r.json()
+        if isinstance(data.get("response"), str):
+            data["response"] = sanitize_response_text(data["response"])
         update_session_context(req.session_id, data)
+        if isinstance(data.get("response"), str):
+            append_session_history(req.session_id, req.prompt, data["response"])
         return data
     except Exception:
         return {"raw": r.text}
@@ -423,38 +465,39 @@ async def generate_stream(req: GenerateRequest):
 
         async def proxy():
             latest_ctx = None
-            line_buffer = b""
+            assistant_parts: list[str] = []
             try:
-                async for chunk in res.aiter_bytes():
-                    if chunk:
-                        line_buffer += chunk
-                        parts = line_buffer.split(b"\n")
-                        line_buffer = parts.pop()
-                        for part in parts:
-                            line = part.strip()
-                            if not line:
-                                continue
-                            try:
-                                obj = json.loads(line.decode("utf-8", errors="replace"))
-                                if "context" in obj:
-                                    latest_ctx = obj["context"]
-                            except Exception:
-                                pass
-                        yield chunk
+                async for line in res.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+
+                    if "context" in obj:
+                        latest_ctx = obj["context"]
+
+                    if isinstance(obj.get("response"), str):
+                        cleaned = sanitize_response_text(obj["response"])
+                        obj["response"] = cleaned
+                        if cleaned:
+                            assistant_parts.append(cleaned)
+
+                    if "thinking" in obj:
+                        obj.pop("thinking", None)
+
+                    out_line = json.dumps(obj, ensure_ascii=False) + "\n"
+                    yield out_line.encode("utf-8")
             except httpx.StreamClosed:
                 return
             except Exception:
                 return
             finally:
-                if line_buffer.strip():
-                    try:
-                        obj = json.loads(line_buffer.decode("utf-8", errors="replace"))
-                        if "context" in obj:
-                            latest_ctx = obj["context"]
-                    except Exception:
-                        pass
                 if latest_ctx is not None:
                     update_session_context(req.session_id, {"context": latest_ctx})
+                if assistant_parts:
+                    append_session_history(req.session_id, req.prompt, "".join(assistant_parts))
                 await res.aclose()
 
         # Ollama returns newline-delimited JSON chunks.
@@ -484,17 +527,21 @@ async def models_list():
 @app.post("/session/reset")
 async def reset_session(req: SessionResetRequest):
     SESSION_CONTEXTS.pop(req.session_id, None)
+    SESSION_HISTORY.pop(req.session_id, None)
     return {"ok": True, "session_id": req.session_id, "reset": True}
 
 
 @app.post("/session/get")
 async def get_session(req: SessionGetRequest):
     ctx = SESSION_CONTEXTS.get(req.session_id)
+    history = SESSION_HISTORY.get(req.session_id, [])
     return {
         "ok": True,
         "session_id": req.session_id,
         "has_context": ctx is not None,
         "context_length": len(ctx) if isinstance(ctx, list) else 0,
+        "history_length": len(history),
+        "history": history,
         "context": ctx,
     }
 
