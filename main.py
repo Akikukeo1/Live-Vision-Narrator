@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 import os
+import json
 import httpx
 
 app = FastAPI(title="Ollama Proxy (FastAPI)")
@@ -17,18 +18,36 @@ class GenerateRequest(BaseModel):
     model: str
     prompt: str
     parameters: dict | None = None
+    session_id: str | None = None
+
+
+class SessionResetRequest(BaseModel):
+    session_id: str
 
 
 def build_payload(req: GenerateRequest) -> dict:
     payload: dict = {"model": req.model, "prompt": req.prompt}
     if req.parameters:
         payload.update(req.parameters)
+    if req.session_id and "context" not in payload:
+        ctx = SESSION_CONTEXTS.get(req.session_id)
+        if ctx is not None:
+            payload["context"] = ctx
     # Respect explicit request parameter, otherwise enforce configured default.
     payload.setdefault("think", DEFAULT_THINK)
     return payload
 
 
+def update_session_context(session_id: str | None, data: dict) -> None:
+    if not session_id:
+        return
+    ctx = data.get("context")
+    if ctx is not None:
+        SESSION_CONTEXTS[session_id] = ctx
+
+
 client: httpx.AsyncClient | None = None
+SESSION_CONTEXTS: dict[str, list[int]] = {}
 
 
 @app.on_event("startup")
@@ -89,6 +108,12 @@ async def ui():
         <body>
             <h2>Ollama Proxy — Test UI</h2>
             <form id="form">
+                <label for="sessionId">Session ID</label>
+                <div style="display:flex;gap:8px;align-items:center;max-width:95%;margin-top:6px">
+                    <input id="sessionId" name="sessionId" placeholder="default" value="default" style="flex:1"/>
+                    <button id="resetSessionBtn" type="button">記憶リセット</button>
+                </div>
+
                 <label for="model">Model</label>
                 <input id="model" name="model" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
 
@@ -116,6 +141,7 @@ async def ui():
 
                 const form = document.getElementById('form');
                 const sendBtn = document.getElementById('sendBtn');
+                const resetSessionBtn = document.getElementById('resetSessionBtn');
                 const responses = document.getElementById('responses');
                 let activeController = null;
                 let requestId = 0;
@@ -168,10 +194,32 @@ async def ui():
                     });
                 }
 
+                if(resetSessionBtn){
+                    resetSessionBtn.addEventListener('click', async ()=>{
+                        const sessionId = document.getElementById('sessionId').value || 'default';
+                        const pane = createResponsePane(++requestId, false);
+                        pane.textContent = '...resetting session';
+                        try{
+                            const r = await fetch('/session/reset', {
+                                method:'POST',
+                                headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({session_id: sessionId}),
+                            });
+                            const t = await r.text();
+                            pane.textContent = t;
+                            if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
+                        }catch(err){
+                            pane.textContent = String(err);
+                            if(pane.parentElement){ pane.parentElement.dataset.status = 'done'; }
+                        }
+                    });
+                }
+
                 form.addEventListener('submit', async (e)=>{
                     e.preventDefault();
 
                     const modelName = document.getElementById('model').value;
+                    const sessionId = document.getElementById('sessionId').value || 'default';
                     const prompt = document.getElementById('prompt').value;
                     const stream = document.getElementById('streamToggle').checked;
                     const allowParallel = document.getElementById('parallelToggle').checked;
@@ -200,9 +248,9 @@ async def ui():
                     }
 
                     const pane = createResponsePane(++requestId, !allowParallel);
-                    const body = { model: modelName, prompt, parameters };
+                    const body = { model: modelName, prompt, parameters, session_id: sessionId };
 
-                    console.log('Form submit: model=%s, prompt_len=%d, streaming=%s, parallel=%s', modelName, prompt.length, stream, allowParallel);
+                    console.log('Form submit: session=%s, model=%s, prompt_len=%d, streaming=%s, parallel=%s', sessionId, modelName, prompt.length, stream, allowParallel);
 
                     try{
                         if(!stream){
@@ -308,7 +356,9 @@ async def generate(req: GenerateRequest):
 
     # Return whatever Ollama returns (assumed JSON)
     try:
-        return r.json()
+        data = r.json()
+        update_session_context(req.session_id, data)
+        return data
     except Exception:
         return {"raw": r.text}
 
@@ -336,15 +386,39 @@ async def generate_stream(req: GenerateRequest):
             raise HTTPException(status_code=res.status_code, detail=text.decode("utf-8", errors="replace"))
 
         async def proxy():
+            latest_ctx = None
+            line_buffer = b""
             try:
                 async for chunk in res.aiter_bytes():
                     if chunk:
+                        line_buffer += chunk
+                        parts = line_buffer.split(b"\n")
+                        line_buffer = parts.pop()
+                        for part in parts:
+                            line = part.strip()
+                            if not line:
+                                continue
+                            try:
+                                obj = json.loads(line.decode("utf-8", errors="replace"))
+                                if "context" in obj:
+                                    latest_ctx = obj["context"]
+                            except Exception:
+                                pass
                         yield chunk
             except httpx.StreamClosed:
                 return
             except Exception:
                 return
             finally:
+                if line_buffer.strip():
+                    try:
+                        obj = json.loads(line_buffer.decode("utf-8", errors="replace"))
+                        if "context" in obj:
+                            latest_ctx = obj["context"]
+                    except Exception:
+                        pass
+                if latest_ctx is not None:
+                    update_session_context(req.session_id, {"context": latest_ctx})
                 await res.aclose()
 
         # Ollama returns newline-delimited JSON chunks.
@@ -369,6 +443,12 @@ async def models_list():
                 return {"raw": r.text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/session/reset")
+async def reset_session(req: SessionResetRequest):
+    SESSION_CONTEXTS.pop(req.session_id, None)
+    return {"ok": True, "session_id": req.session_id, "reset": True}
 
 
 if __name__ == "__main__":
