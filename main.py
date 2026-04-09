@@ -54,6 +54,11 @@ async def health():
         return {"ok": False, "ollama_url": OLLAMA_URL}
 
 
+@app.get("/")
+async def root():
+    return {"ok": True, "endpoints": ["/health", "/generate"]}
+
+
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     global client
