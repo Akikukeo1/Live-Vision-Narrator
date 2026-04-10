@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # Session management
     model_idle_seconds: int = 2000
 
+    # Server ports
+    api_port: int = 8000
+    ui_port: int = 8001
+
     # System profile file paths
     system_default_file: str = "Modelfile"
     system_detailed_file: str = "Modelfile.detailed"
