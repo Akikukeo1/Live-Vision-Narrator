@@ -14,6 +14,18 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 import uvicorn
 from config import get_settings
+import logging
+
+# Load settings early so logging can be configured
+settings = get_settings()
+# Configure logging for UI server
+log_level_val = getattr(logging, settings.log_level.upper(), logging.INFO)
+logging.basicConfig(level=log_level_val)
+for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "httpx"):
+    try:
+        logging.getLogger(logger_name).setLevel(log_level_val)
+    except Exception:
+        pass
 
 app = FastAPI(title="Live-Vision-Narrator UI")
 
@@ -48,14 +60,16 @@ async def health():
 
 @app.get("/api-config")
 async def api_config():
-    """Provide API configuration to UI."""
+    """Provide API configuration to UI.
+
+    Uses api_host (browser-accessible) instead of host_ip (server binding).
+    """
     settings = get_settings()
     return {
-        "api_base_url": f"http://localhost:{settings.api_port}",
+        "api_base_url": f"http://{settings.api_host}:{settings.api_port}",
         "api_port": settings.api_port,
     }
 
 
 if __name__ == "__main__":
-    settings = get_settings()
-    uvicorn.run("ui:app", host="0.0.0.0", port=settings.ui_port, log_level="info", reload=False)
+    uvicorn.run("ui:app", host=settings.ui_ip, port=settings.ui_port, log_level=settings.log_level.lower(), reload=False)

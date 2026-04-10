@@ -33,7 +33,14 @@ settings = get_settings()
 app.state.settings = settings
 
 # Configure logging based on settings
-logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+log_level_val = getattr(logging, settings.log_level.upper(), logging.INFO)
+logging.basicConfig(level=log_level_val)
+# Ensure uvicorn/fastapi loggers follow configured level as well
+for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "httpx"):
+    try:
+        logging.getLogger(logger_name).setLevel(log_level_val)
+    except Exception:
+        pass
 
 # ============================================================================
 # SYSTEM PROFILE MANAGEMENT
@@ -186,6 +193,8 @@ SESSION_CONTEXTS: dict[str, list[int]] = {}
 SESSION_HISTORY: dict[str, list[dict[str, str]]] = {}
 # Per-model usage tracking to detect "first loading" (model not used recently)
 MODEL_STATE: dict[str, float] = {}
+# Counter for concurrent /generate/stream requests
+GENERATE_STREAM_ACTIVE: int = 0
 
 
 # ============================================================================
@@ -365,160 +374,167 @@ async def generate_stream(req: GenerateRequest):
 
     This keeps streaming logic separate from the UI and non-streaming endpoint.
     """
-    global client
+    global client, GENERATE_STREAM_ACTIVE
     if client is None:
         raise HTTPException(status_code=503, detail="Service not started")
 
-    s = app.state.settings
-    payload = build_payload(req)
-
+    GENERATE_STREAM_ACTIVE += 1
     try:
-        # Keep upstream stream open for as long as StreamingResponse is iterating.
-        start = time.perf_counter()
-        request = client.build_request("POST", f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
-        res = await client.send(request, stream=True)
-        send_ms = (time.perf_counter() - start) * 1000
-        logging.info("/generate/stream session=%s model=%s send_ms=%.1f", req.session_id, req.model, send_ms)
+        logging.info("/generate/stream START active_count=%d session=%s model=%s", GENERATE_STREAM_ACTIVE, req.session_id, req.model)
 
-        if res.status_code >= 400:
-            text = await res.aread()
-            await res.aclose()
-            raise HTTPException(status_code=res.status_code, detail=text.decode("utf-8", errors="replace"))
+        s = app.state.settings
+        payload = build_payload(req)
 
-        # Log think/reveal for streaming requests too
-        reveal = should_reveal_thoughts(req)
-        logging.info("/generate/stream requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
+        try:
+            # Keep upstream stream open for as long as StreamingResponse is iterating.
+            start = time.perf_counter()
+            request = client.build_request("POST", f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
+            res = await client.send(request, stream=True)
+            send_ms = (time.perf_counter() - start) * 1000
+            logging.info("/generate/stream session=%s model=%s send_ms=%.1f", req.session_id, req.model, send_ms)
 
-        async def proxy():
-            latest_ctx = None
-            assistant_parts: list[str] = []
-            thinking_parts: list[str] = []
-            first_ms = None
-            last_chunk = None
-            try:
-                # Surface elapsed time from POST to response start
-                elapsed_ms = (time.perf_counter() - start) * 1000
-                header = {"elapsed_ms": round(elapsed_ms, 1)}
-                logging.info("/generate/stream session=%s model=%s header_elapsed_ms=%.1f", req.session_id, req.model, elapsed_ms)
-                yield (json.dumps(header, ensure_ascii=False) + "\n").encode("utf-8")
-                async for line in res.aiter_lines():
-                    if not line:
-                        continue
-                    # Record time-to-first-chunk
-                    if first_ms is None:
-                        first_ms = (time.perf_counter() - start) * 1000
-                        logging.info("/generate/stream session=%s model=%s first_chunk_ms=%.1f send_ms=%.1f", req.session_id, req.model, first_ms, send_ms)
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
+            if res.status_code >= 400:
+                text = await res.aread()
+                await res.aclose()
+                raise HTTPException(status_code=res.status_code, detail=text.decode("utf-8", errors="replace"))
 
-                    if "context" in obj:
-                        latest_ctx = obj["context"]
+            # Log think/reveal for streaming requests too
+            reveal = should_reveal_thoughts(req)
+            logging.info("/generate/stream requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
 
-                    if isinstance(obj.get("response"), str):
-                        if not reveal:
-                            cleaned = sanitize_response_text(obj["response"]) or ""
-                            if cleaned.strip():
-                                obj["response"] = cleaned
-                                assistant_parts.append(cleaned)
-                            else:
-                                # try to fallback to choices if sanitization removed visible text
-                                choices = obj.get("choices")
-                                if isinstance(choices, list):
-                                    parts = [c.get("text") for c in choices if isinstance(c, dict) and c.get("text")]
-                                    joined = "".join(parts).strip()
-                                    if joined:
-                                        obj["response"] = joined
-                                        assistant_parts.append(joined)
+            async def proxy():
+                latest_ctx = None
+                assistant_parts: list[str] = []
+                thinking_parts: list[str] = []
+                first_ms = None
+                last_chunk = None
+                try:
+                    # Surface elapsed time from POST to response start
+                    elapsed_ms = (time.perf_counter() - start) * 1000
+                    header = {"elapsed_ms": round(elapsed_ms, 1)}
+                    logging.info("/generate/stream session=%s model=%s header_elapsed_ms=%.1f", req.session_id, req.model, elapsed_ms)
+                    yield (json.dumps(header, ensure_ascii=False) + "\n").encode("utf-8")
+                    async for line in res.aiter_lines():
+                        if not line:
+                            continue
+                        # Record time-to-first-chunk
+                        if first_ms is None:
+                            first_ms = (time.perf_counter() - start) * 1000
+                            logging.info("/generate/stream session=%s model=%s first_chunk_ms=%.1f send_ms=%.1f", req.session_id, req.model, first_ms, send_ms)
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+
+                        if "context" in obj:
+                            latest_ctx = obj["context"]
+
+                        if isinstance(obj.get("response"), str):
+                            if not reveal:
+                                cleaned = sanitize_response_text(obj["response"]) or ""
+                                if cleaned.strip():
+                                    obj["response"] = cleaned
+                                    assistant_parts.append(cleaned)
+                                else:
+                                    # try to fallback to choices if sanitization removed visible text
+                                    choices = obj.get("choices")
+                                    if isinstance(choices, list):
+                                        parts = [c.get("text") for c in choices if isinstance(c, dict) and c.get("text")]
+                                        joined = "".join(parts).strip()
+                                        if joined:
+                                            obj["response"] = joined
+                                            assistant_parts.append(joined)
+                                        else:
+                                            obj["response"] = cleaned
                                     else:
                                         obj["response"] = cleaned
-                                else:
-                                    obj["response"] = cleaned
-                        else:
-                            # keep original response (including possible <think> sections)
-                            assistant_parts.append(obj["response"])
+                            else:
+                                # keep original response (including possible <think> sections)
+                                assistant_parts.append(obj["response"])
 
-                    # Collect thinking parts when present and reveal requested
-                    if obj.get("thinking") is not None:
-                        if reveal:
-                            thinking_parts.append(obj.get("thinking"))
-                    # By default, remove any 'thinking' field unless the client requested it
-                    if not reveal:
-                        obj.pop("thinking", None)
+                        # Collect thinking parts when present and reveal requested
+                        if obj.get("thinking") is not None:
+                            if reveal:
+                                thinking_parts.append(obj.get("thinking"))
+                        # By default, remove any 'thinking' field unless the client requested it
+                        if not reveal:
+                            obj.pop("thinking", None)
 
-                    # Store the last chunk to augment with token info later
-                    if obj.get("done"):
-                        last_chunk = obj
+                        # Store the last chunk to augment with token info later
+                        if obj.get("done"):
+                            last_chunk = obj
 
-                    out_line = json.dumps(obj, ensure_ascii=False) + "\n"
-                    yield out_line.encode("utf-8")
-            except httpx.StreamClosed:
-                return
-            except Exception:
-                logging.exception("Error while proxying stream")
-                return
-            finally:
-                total_ms = (time.perf_counter() - start) * 1000
-                logging.info("/generate/stream session=%s model=%s total_ms=%.1f first_chunk_ms=%s", req.session_id, req.model, total_ms, f"{first_ms:.1f}" if first_ms is not None else "None")
-
-                # Calculate token information for streaming response and send to client
-                try:
-                    token_info = {}
-                    try:
-                        import tiktoken
-                        enc = None
-                        try:
-                            enc = tiktoken.encoding_for_model(req.model)
-                        except Exception:
-                            enc = tiktoken.get_encoding("cl100k_base")
-
-                        prompt_text = req.prompt or ""
-                        resp_text = "".join(assistant_parts) if assistant_parts else ""
-                        prompt_tokens = len(enc.encode(prompt_text)) if prompt_text else 0
-                        response_tokens = len(enc.encode(resp_text)) if resp_text else 0
-                        total_tokens = prompt_tokens + response_tokens
-
-                        token_info["prompt_tokens"] = prompt_tokens
-                        token_info["response_tokens"] = response_tokens
-                        token_info["total_tokens"] = total_tokens
-
-                        logging.info("/generate/stream session=%s model=%s tokens_prompt=%s tokens_response=%s tokens_total=%s",
-                        req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
-
-                        # Send token info to client if we have a last chunk
-                        if last_chunk is not None:
-                            last_chunk["tokens"] = token_info
-                            # Resend the final chunk with token info
-                            yield (json.dumps(last_chunk, ensure_ascii=False) + "\n").encode("utf-8")
-                        else:
-                            # If no last chunk captured, send token info as standalone chunk
-                            token_chunk = {"done": True, "tokens": token_info}
-                            yield (json.dumps(token_chunk, ensure_ascii=False) + "\n").encode("utf-8")
-                    except ImportError:
-                        logging.warning("/generate/stream session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
-                    except Exception as e:
-                        logging.warning("/generate/stream session=%s model=%s token calculation failed: %s", req.session_id, req.model, str(e))
+                        out_line = json.dumps(obj, ensure_ascii=False) + "\n"
+                        yield out_line.encode("utf-8")
+                except httpx.StreamClosed:
+                    return
                 except Exception:
-                    pass
+                    logging.exception("Error while proxying stream")
+                    return
+                finally:
+                    total_ms = (time.perf_counter() - start) * 1000
+                    logging.info("/generate/stream session=%s model=%s total_ms=%.1f first_chunk_ms=%s", req.session_id, req.model, total_ms, f"{first_ms:.1f}" if first_ms is not None else "None")
 
-                if latest_ctx is not None:
-                    update_session_context(req.session_id, {"context": latest_ctx})
-                if assistant_parts:
-                    append_session_history(req.session_id, req.prompt, "".join(assistant_parts))
-                    # Persist thinking parts if requested to save
-                    save_inner = bool(req.parameters and isinstance(req.parameters, dict) and req.parameters.get("save_inner"))
-                    if reveal and save_inner and thinking_parts:
-                        hist = SESSION_HISTORY.setdefault(req.session_id, [])
-                        hist.append({"role": "assistant.inner", "text": "\n".join(thinking_parts)})
-                await res.aclose()
+                    # Calculate token information for streaming response and send to client
+                    try:
+                        token_info = {}
+                        try:
+                            import tiktoken
+                            enc = None
+                            try:
+                                enc = tiktoken.encoding_for_model(req.model)
+                            except Exception:
+                                enc = tiktoken.get_encoding("cl100k_base")
 
-        # Ollama returns newline-delimited JSON chunks.
-        return StreamingResponse(proxy(), media_type="application/x-ndjson")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+                            prompt_text = req.prompt or ""
+                            resp_text = "".join(assistant_parts) if assistant_parts else ""
+                            prompt_tokens = len(enc.encode(prompt_text)) if prompt_text else 0
+                            response_tokens = len(enc.encode(resp_text)) if resp_text else 0
+                            total_tokens = prompt_tokens + response_tokens
+
+                            token_info["prompt_tokens"] = prompt_tokens
+                            token_info["response_tokens"] = response_tokens
+                            token_info["total_tokens"] = total_tokens
+
+                            logging.info("/generate/stream session=%s model=%s tokens_prompt=%s tokens_response=%s tokens_total=%s",
+                            req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
+
+                            # Send token info to client if we have a last chunk
+                            if last_chunk is not None:
+                                last_chunk["tokens"] = token_info
+                                # Resend the final chunk with token info
+                                yield (json.dumps(last_chunk, ensure_ascii=False) + "\n").encode("utf-8")
+                            else:
+                                # If no last chunk captured, send token info as standalone chunk
+                                token_chunk = {"done": True, "tokens": token_info}
+                                yield (json.dumps(token_chunk, ensure_ascii=False) + "\n").encode("utf-8")
+                        except ImportError:
+                            logging.warning("/generate/stream session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
+                        except Exception as e:
+                            logging.warning("/generate/stream session=%s model=%s token calculation failed: %s", req.session_id, req.model, str(e))
+                    except Exception:
+                        pass
+
+                    if latest_ctx is not None:
+                        update_session_context(req.session_id, {"context": latest_ctx})
+                    if assistant_parts:
+                        append_session_history(req.session_id, req.prompt, "".join(assistant_parts))
+                        # Persist thinking parts if requested to save
+                        save_inner = bool(req.parameters and isinstance(req.parameters, dict) and req.parameters.get("save_inner"))
+                        if reveal and save_inner and thinking_parts:
+                            hist = SESSION_HISTORY.setdefault(req.session_id, [])
+                            hist.append({"role": "assistant.inner", "text": "\n".join(thinking_parts)})
+                    await res.aclose()
+
+            # Ollama returns newline-delimited JSON chunks.
+            return StreamingResponse(proxy(), media_type="application/x-ndjson")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        GENERATE_STREAM_ACTIVE -= 1
+        logging.info("/generate/stream END active_count=%d session=%s model=%s", GENERATE_STREAM_ACTIVE, req.session_id, req.model)
 
 
 @app.get("/models")
@@ -568,4 +584,5 @@ if __name__ == "__main__":
     import uvicorn
 
     settings = get_settings()
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.api_port, log_level="info", reload=False)
+    # Use configured log level for uvicorn
+    uvicorn.run("main:app", host=settings.host_ip, port=settings.api_port, log_level=settings.log_level.lower(), reload=False)

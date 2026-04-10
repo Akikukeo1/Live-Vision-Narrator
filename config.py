@@ -67,7 +67,13 @@ class Settings(BaseSettings):
     # Session management
     model_idle_seconds: int = 2000
 
-    # Server ports
+    # Server ports / ip
+    # host_ip: server binding address (0.0.0.0 = all interfaces)
+    host_ip: str = "0.0.0.0"
+    ui_ip: str = "0.0.0.0"
+    # api_host: browser-accessible API server hostname (used by UI to connect)
+    api_host: str = "localhost"
+
     api_port: int = 8000
     ui_port: int = 8001
 
