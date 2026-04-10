@@ -28,3 +28,7 @@ model_idle_seconds = 4000
 # System prompt profile file paths (supports local Modelfiles)
 system_default_file = "Modelfile"
 system_detailed_file = "Modelfile.detailed"
+
+# Server ports
+api_port = 8000
+ui_port = 8001

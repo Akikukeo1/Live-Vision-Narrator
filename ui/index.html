@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Ollama Proxy UI</title>
+        <link rel="stylesheet" href="/static/style.css" />
+    </head>
+    <body>
+        <div class="container">
+        <h2>Ollama Proxy — Test UI - FOR DEVELOPMENT USE ONLY</h2>
+        <form id="form">
+            <label for="sessionId">Session ID</label>
+            <div style="display:flex;gap:8px;align-items:center;max-width:95%;margin-top:6px">
+                <input id="sessionId" name="sessionId" placeholder="default" value="default" style="flex:1"/>
+            </div>
+
+            <div class="button-row big-btn-container">
+                <button id="resetSessionBtn" type="button" class="big-btn">記憶リセット</button>
+                <button id="showSessionBtn" type="button" class="big-btn">記憶表示</button>
+                <button id="thinkBtn" type="button" class="big-btn">Thinking発動</button>
+            </div>
+
+            <label for="model">Model</label>
+            <input id="model" name="model" value="live-narrator" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
+
+            <label for="prompt">Prompt</label>
+            <textarea id="prompt" name="prompt" rows="6" style="width:95%;margin-top:6px">こんにちは</textarea>
+
+            <label for="params">Additional JSON parameters (optional)</label>
+            <textarea id="params" name="params" rows="4" style="width:95%;margin-top:6px">{
+            }</textarea>
+
+            <div class="toggles" style="margin-top:8px">
+                <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
+                <label><input id="parallelToggle" type="checkbox"/> 並列許可</label>
+                <label><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
+                <label><input id="showCoTToggle" type="checkbox"/> CoT表示</label>
+                <label><input id="showInnerToggle" type="checkbox"/> 心の声を表示する</label>
+                <label><input id="saveInnerToggle" type="checkbox"/> 心の声を保存する</label>
+                <label for="innerDetailSelect">詳しく表示</label>
+                <select id="innerDetailSelect" name="innerDetailSelect" style="margin-left:6px">
+                    <option value="short">短い</option>
+                    <option value="long">詳しい</option>
+                </select>
+                <label for="systemProfile" style="margin-left:12px">System Profile</label>
+                <select id="systemProfile" name="systemProfile" style="width:140px;margin-left:6px">
+                    <option value="">(default)</option>
+                    <option value="detailed">detailed</option>
+                </select>
+            </div>
+
+            <button id="sendBtn" type="button" class="big-btn">送信</button>
+        </form>
+
+        <div id="chatMode" style="display:none;margin-top:14px;max-width:95%">
+            <h3>チャット</h3>
+            <div id="chatMessages" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;max-height:360px;overflow:auto;background:#fff"></div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <input id="chatInput" placeholder="メッセージを入力..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #d1d5db" />
+                <button id="chatSendBtn" class="big-btn" type="button">送信</button>
+            </div>
+        </div>
+
+        <h3>Response</h3>
+        <div id="responses"></div>
+
+        <script src="/static/main.js"></script>
+        </div>
+    </body>
+</html>
