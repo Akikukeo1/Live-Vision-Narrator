@@ -383,6 +383,17 @@ async def ui():
                     // Expose for callers: pane.parentElement.thinkingPre
                     card.thinkingPre = thinkingPre;
                     card.thinkingLabel = thinkingLabel;
+
+                    // Token information panel
+                    const tokenDiv = document.createElement('div');
+                    tokenDiv.style.fontSize = '11px';
+                    tokenDiv.style.color = '#6b7280';
+                    tokenDiv.style.marginTop = '6px';
+                    tokenDiv.textContent = '';
+                    tokenDiv.style.display = 'none';
+                    card.appendChild(tokenDiv);
+                    card.tokenDiv = tokenDiv;
+
                     responses.prepend(card);
                     return pre;
                 }
@@ -395,6 +406,26 @@ async def ui():
                 function appendText(target, text){
                     target.textContent += text;
                     target.scrollTop = target.scrollHeight;
+                }
+
+                function updateTokenDisplay(tokenDiv, tokens){
+                    if(!tokens || typeof tokens !== 'object') return;
+                    let display = 'Tokens: ';
+                    if(tokens.prompt_tokens !== undefined){
+                        display += 'prompt=' + tokens.prompt_tokens + ' ';
+                    }
+                    if(tokens.response_tokens !== undefined){
+                        display += 'response=' + tokens.response_tokens + ' ';
+                    } else if(tokens.completion_tokens !== undefined){
+                        display += 'completion=' + tokens.completion_tokens + ' ';
+                    }
+                    if(tokens.total_tokens !== undefined){
+                        display += 'total=' + tokens.total_tokens;
+                    }
+                    if(display !== 'Tokens: '){
+                        tokenDiv.textContent = display;
+                        tokenDiv.style.display = 'block';
+                    }
                 }
 
                 if(sendBtn){
@@ -732,6 +763,9 @@ async def ui():
                                             card.thinkingPre.textContent = String(obj.thinking);
                                         }
                                     }
+                                    if(obj.tokens !== undefined && pane.parentElement && pane.parentElement.tokenDiv){
+                                        updateTokenDisplay(pane.parentElement.tokenDiv, obj.tokens);
+                                    }
                                 } else {
                                     pane.textContent = JSON.stringify(obj, null, 2);
                                 }
@@ -789,6 +823,9 @@ async def ui():
                                     } else if(obj.choices && Array.isArray(obj.choices)){
                                         obj.choices.forEach(c=>{ if(c.text) appendText(pane, c.text); });
                                     }
+                                    if(obj.tokens !== undefined && pane.parentElement && pane.parentElement.tokenDiv){
+                                        updateTokenDisplay(pane.parentElement.tokenDiv, obj.tokens);
+                                    }
                                 }catch(_){
                                     // Ignore malformed fragments to avoid leaking raw payloads.
                                 }
@@ -800,6 +837,9 @@ async def ui():
                                 const obj = JSON.parse(buffer);
                                 if(obj.response !== undefined) appendText(pane, obj.response);
                                 if(obj.thinking !== undefined){ const card=pane.parentElement; if(card && card.thinkingPre){ card.thinkingLabel.style.display='block'; card.thinkingPre.style.display='block'; card.thinkingPre.textContent += obj.thinking; } }
+                                if(obj.tokens !== undefined && pane.parentElement && pane.parentElement.tokenDiv){
+                                    updateTokenDisplay(pane.parentElement.tokenDiv, obj.tokens);
+                                }
                             }catch(_){
                                 // ignore trailing partial fragment
                             }
@@ -910,6 +950,52 @@ async def generate(req: GenerateRequest):
         except Exception:
             pass
 
+        # Calculate and surface token information
+        try:
+            token_info = {}
+            # Priority 1: Use Ollama's usage if available
+            usage = data.get("usage")
+            if isinstance(usage, dict):
+                token_info["prompt_tokens"] = usage.get("prompt_tokens")
+                token_info["completion_tokens"] = usage.get("completion_tokens")
+                total = usage.get("total_tokens")
+                if total is None and token_info["prompt_tokens"] is not None and token_info["completion_tokens"] is not None:
+                    token_info["total_tokens"] = token_info["prompt_tokens"] + token_info["completion_tokens"]
+                else:
+                    token_info["total_tokens"] = total
+                data["tokens"] = token_info
+                logging.info("/generate session=%s model=%s tokens_prompt=%s tokens_completion=%s tokens_total=%s",
+                             req.session_id, req.model, token_info.get("prompt_tokens"), token_info.get("completion_tokens"), token_info.get("total_tokens"))
+            else:
+                # Priority 2: Calculate locally using tiktoken
+                try:
+                    import tiktoken
+                    enc = None
+                    try:
+                        enc = tiktoken.encoding_for_model(req.model)
+                    except Exception:
+                        enc = tiktoken.get_encoding("cl100k_base")
+
+                    prompt_text = req.prompt or ""
+                    resp_text = data.get("response") or ""
+                    prompt_tokens = len(enc.encode(prompt_text)) if prompt_text else 0
+                    response_tokens = len(enc.encode(resp_text)) if resp_text else 0
+                    total_tokens = prompt_tokens + response_tokens
+
+                    token_info["prompt_tokens"] = prompt_tokens
+                    token_info["response_tokens"] = response_tokens
+                    token_info["total_tokens"] = total_tokens
+                    data["tokens"] = token_info
+
+                    logging.info("/generate session=%s model=%s tokens_prompt=%s tokens_response=%s tokens_total=%s",
+                                 req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
+                except ImportError:
+                    logging.warning("/generate session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
+                except Exception as e:
+                    logging.warning("/generate session=%s model=%s token calculation failed: %s", req.session_id, req.model, str(e))
+        except Exception:
+            pass
+
         return data
     except Exception:
         return {"raw": r.text}
@@ -950,6 +1036,7 @@ async def generate_stream(req: GenerateRequest):
             assistant_parts: list[str] = []
             thinking_parts: list[str] = []
             first_ms = None
+            last_chunk = None
             try:
                 # Determine first_loading based on elapsed time from POST to response start
                 # If elapsed_ms > 1000ms, model is likely loading from disk/memory
@@ -1004,6 +1091,10 @@ async def generate_stream(req: GenerateRequest):
                     if not reveal:
                         obj.pop("thinking", None)
 
+                    # Store the last chunk to augment with token info later
+                    if obj.get("done"):
+                        last_chunk = obj
+
                     out_line = json.dumps(obj, ensure_ascii=False) + "\n"
                     yield out_line.encode("utf-8")
             except httpx.StreamClosed:
@@ -1014,6 +1105,47 @@ async def generate_stream(req: GenerateRequest):
             finally:
                 total_ms = (time.perf_counter() - start) * 1000
                 logging.info("/generate/stream session=%s model=%s total_ms=%.1f first_chunk_ms=%s", req.session_id, req.model, total_ms, f"{first_ms:.1f}" if first_ms is not None else "None")
+
+                # Calculate token information for streaming response and send to client
+                try:
+                    token_info = {}
+                    try:
+                        import tiktoken
+                        enc = None
+                        try:
+                            enc = tiktoken.encoding_for_model(req.model)
+                        except Exception:
+                            enc = tiktoken.get_encoding("cl100k_base")
+
+                        prompt_text = req.prompt or ""
+                        resp_text = "".join(assistant_parts) if assistant_parts else ""
+                        prompt_tokens = len(enc.encode(prompt_text)) if prompt_text else 0
+                        response_tokens = len(enc.encode(resp_text)) if resp_text else 0
+                        total_tokens = prompt_tokens + response_tokens
+
+                        token_info["prompt_tokens"] = prompt_tokens
+                        token_info["response_tokens"] = response_tokens
+                        token_info["total_tokens"] = total_tokens
+
+                        logging.info("/generate/stream session=%s model=%s tokens_prompt=%s tokens_response=%s tokens_total=%s",
+                                     req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
+
+                        # Send token info to client if we have a last chunk
+                        if last_chunk is not None:
+                            last_chunk["tokens"] = token_info
+                            # Resend the final chunk with token info
+                            yield (json.dumps(last_chunk, ensure_ascii=False) + "\n").encode("utf-8")
+                        else:
+                            # If no last chunk captured, send token info as standalone chunk
+                            token_chunk = {"done": True, "tokens": token_info}
+                            yield (json.dumps(token_chunk, ensure_ascii=False) + "\n").encode("utf-8")
+                    except ImportError:
+                        logging.warning("/generate/stream session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
+                    except Exception as e:
+                        logging.warning("/generate/stream session=%s model=%s token calculation failed: %s", req.session_id, req.model, str(e))
+                except Exception:
+                    pass
+
                 if latest_ctx is not None:
                     update_session_context(req.session_id, {"context": latest_ctx})
                 if assistant_parts:
