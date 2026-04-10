@@ -956,6 +956,7 @@ async def generate_stream(req: GenerateRequest):
                 elapsed_ms = (time.perf_counter() - start) * 1000
                 first_loading = elapsed_ms > 1000
                 header = {"first_loading": bool(first_loading), "elapsed_ms": round(elapsed_ms, 1)}
+                logging.info("/generate/stream session=%s model=%s header_elapsed_ms=%.1f first_loading=%s", req.session_id, req.model, elapsed_ms, first_loading)
                 yield (json.dumps(header, ensure_ascii=False) + "\n").encode("utf-8")
                 async for line in res.aiter_lines():
                     if not line:
