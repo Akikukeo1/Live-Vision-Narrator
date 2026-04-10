@@ -42,7 +42,7 @@ def load_system_profile(name: str) -> str | None:
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_GENERATE_PATH = os.getenv("OLLAMA_GENERATE_PATH", "/api/generate")
-OLLAMA_MODELS_PATH = os.getenv("OLLAMA_MODELS_PATH", "/api/models")
+OLLAMA_MODELS_PATH = os.getenv("OLLAMA_MODELS_PATH", "/api/tags")
 WARMUP_MODEL = os.getenv("WARMUP_MODEL")
 DEFAULT_THINK = os.getenv("OLLAMA_DEFAULT_THINK", "false").lower() in {"1", "true", "yes", "on"}
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -149,6 +149,10 @@ def append_session_history(session_id: str | None, user_text: str, assistant_tex
 client: httpx.AsyncClient | None = None
 SESSION_CONTEXTS: dict[str, list[int]] = {}
 SESSION_HISTORY: dict[str, list[dict[str, str]]] = {}
+# Per-model usage tracking to detect "first loading" (model not used recently)
+MODEL_STATE: dict[str, float] = {}
+# Seconds of idle time after which a model is considered unloaded and will trigger "first_loading"
+MODEL_IDLE_SECONDS = int(os.getenv("MODEL_IDLE_SECONDS", "600"))
 
 
 @app.on_event("startup")
@@ -163,6 +167,8 @@ async def startup_event():
                 json={"model": WARMUP_MODEL, "prompt": ""},
                 timeout=5.0,
             )
+            # Mark warmup model as recently used so first-loading won't be signaled immediately
+            MODEL_STATE[WARMUP_MODEL] = time.time()
         except Exception:
             # Non-fatal; warmup best-effort only
             pass
@@ -229,7 +235,7 @@ async def ui():
         </head>
         <body>
             <div class="container">
-            <h2>Ollama Proxy — Test UI</h2>
+            <h2>Ollama Proxy — Test UI - FOR DEVELOPMENT USE ONLY</h2>
             <form id="form">
                 <label for="sessionId">Session ID</label>
                 <div style="display:flex;gap:8px;align-items:center;max-width:95%;margin-top:6px">
@@ -491,6 +497,14 @@ async def ui():
                                 if(!part.trim()) continue;
                                 try{
                                     const obj = JSON.parse(part);
+                                    if(obj.first_loading){
+                                        const note = document.createElement('div');
+                                        note.style.color = '#b45309';
+                                        note.style.fontSize = '13px';
+                                        note.style.marginBottom = '6px';
+                                        note.textContent = '初回読み込み中です…: モデルのロードで時間がかかる場合があります';
+                                        wrapper.insertBefore(note, assistantNode);
+                                    }
                                     if(obj.thinking !== undefined){
                                         // show thinking in a smaller area
                                         if(!wrapper.thinkingPre){
@@ -511,6 +525,14 @@ async def ui():
                         if(buffer.trim()){
                             try{
                                 const obj = JSON.parse(buffer);
+                                if(obj.first_loading){
+                                    const note = document.createElement('div');
+                                    note.style.color = '#b45309';
+                                    note.style.fontSize = '13px';
+                                    note.style.marginBottom = '6px';
+                                    note.textContent = '初回読み込み中です…: モデルのロードで時間がかかる場合があります';
+                                    wrapper.insertBefore(note, assistantNode);
+                                }
                                 if(obj.response !== undefined) assistantNode.textContent += obj.response;
                                 if(obj.thinking !== undefined){
                                     if(!wrapper.thinkingPre){
@@ -672,6 +694,14 @@ async def ui():
                             try{
                                 const obj = JSON.parse(t);
                                 if(obj && typeof obj === 'object' && obj.response !== undefined){
+                                    if(obj.first_loading){
+                                        const badge = document.createElement('div');
+                                        badge.style.color = '#b45309';
+                                        badge.style.fontSize = '13px';
+                                        badge.style.marginBottom = '6px';
+                                        badge.textContent = '初回読み込み中です…: モデルのロードで時間がかかる場合があります';
+                                        pane.parentElement && pane.parentElement.insertBefore(badge, pane.parentElement.firstChild);
+                                    }
                                     pane.textContent = String(obj.response);
                                     if(obj.thinking !== undefined){
                                         const card = pane.parentElement;
@@ -717,6 +747,14 @@ async def ui():
                                 if(!part.trim()) continue;
                                 try{
                                     const obj = JSON.parse(part);
+                                    if(obj.first_loading){
+                                        const badge = document.createElement('div');
+                                        badge.style.color = '#b45309';
+                                        badge.style.fontSize = '13px';
+                                        badge.style.marginBottom = '6px';
+                                        badge.textContent = '初回読み込み中です…: モデルのロードで時間がかかる場合があります';
+                                        pane.parentElement && pane.parentElement.insertBefore(badge, pane.parentElement.firstChild);
+                                    }
                                     if(obj.thinking !== undefined){
                                         const card = pane.parentElement;
                                         if(card && card.thinkingPre){
@@ -775,6 +813,12 @@ async def generate(req: GenerateRequest):
         raise HTTPException(status_code=503, detail="Service not started")
 
     payload = build_payload(req)
+    # Determine if this request will trigger a "first loading" for the model
+    now = time.time()
+    last_used = MODEL_STATE.get(req.model)
+    first_loading = (last_used is None) or (now - last_used > MODEL_IDLE_SECONDS)
+    # Mark model as used now (pre-emptively)
+    MODEL_STATE[req.model] = now
     # Log whether the request will think / reveal thoughts
     reveal = should_reveal_thoughts(req)
     logging.info("/generate requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
@@ -799,7 +843,21 @@ async def generate(req: GenerateRequest):
 
         if isinstance(data.get("response"), str):
             if not reveal:
-                data["response"] = sanitize_response_text(data["response"])
+                cleaned = sanitize_response_text(data["response"]) or ""
+                # If sanitizing removes all visible text, try to fall back to 'choices' if present
+                if not cleaned.strip():
+                    choices = data.get("choices")
+                    if isinstance(choices, list):
+                        parts = [c.get("text") for c in choices if isinstance(c, dict) and c.get("text")]
+                        joined = "".join(parts).strip()
+                        if joined:
+                            data["response"] = joined
+                        else:
+                            data["response"] = cleaned
+                    else:
+                        data["response"] = cleaned
+                else:
+                    data["response"] = cleaned
             else:
                 # keep response intact when revealing thoughts
                 data["response"] = data["response"]
@@ -827,6 +885,12 @@ async def generate(req: GenerateRequest):
                 hist = SESSION_HISTORY.setdefault(req.session_id, [])
                 hist.append({"role": "assistant.inner", "text": thinking_text})
 
+        # Surface first-loading info to API clients (UI-agnostic flag)
+        try:
+            data["first_loading"] = bool(first_loading)
+        except Exception:
+            pass
+
         return data
     except Exception:
         return {"raw": r.text}
@@ -843,6 +907,12 @@ async def generate_stream(req: GenerateRequest):
         raise HTTPException(status_code=503, detail="Service not started")
 
     payload = build_payload(req)
+    # Determine if this request will trigger a "first loading" for the model
+    now = time.time()
+    last_used = MODEL_STATE.get(req.model)
+    first_loading = (last_used is None) or (now - last_used > MODEL_IDLE_SECONDS)
+    # Mark model as used now (pre-emptively)
+    MODEL_STATE[req.model] = now
 
     try:
         # Keep upstream stream open for as long as StreamingResponse is iterating.
@@ -867,6 +937,9 @@ async def generate_stream(req: GenerateRequest):
             thinking_parts: list[str] = []
             first_ms = None
             try:
+                # Inform downstream clients (UI or API consumers) that this stream may cause model load
+                header = {"first_loading": bool(first_loading)}
+                yield (json.dumps(header, ensure_ascii=False) + "\n").encode("utf-8")
                 async for line in res.aiter_lines():
                     if not line:
                         continue
@@ -884,10 +957,23 @@ async def generate_stream(req: GenerateRequest):
 
                     if isinstance(obj.get("response"), str):
                         if not reveal:
-                            cleaned = sanitize_response_text(obj["response"])
-                            obj["response"] = cleaned
-                            if cleaned:
+                            cleaned = sanitize_response_text(obj["response"]) or ""
+                            if cleaned.strip():
+                                obj["response"] = cleaned
                                 assistant_parts.append(cleaned)
+                            else:
+                                # try to fallback to choices if sanitization removed visible text
+                                choices = obj.get("choices")
+                                if isinstance(choices, list):
+                                    parts = [c.get("text") for c in choices if isinstance(c, dict) and c.get("text")]
+                                    joined = "".join(parts).strip()
+                                    if joined:
+                                        obj["response"] = joined
+                                        assistant_parts.append(joined)
+                                    else:
+                                        obj["response"] = cleaned
+                                else:
+                                    obj["response"] = cleaned
                         else:
                             # keep original response (including possible <think> sections)
                             assistant_parts.append(obj["response"])
@@ -935,6 +1021,10 @@ async def models_list():
     try:
         async with httpx.AsyncClient(timeout=10.0) as c:
             r = await c.get(f"{OLLAMA_URL}{OLLAMA_MODELS_PATH}")
+            # Backward/forward compatibility across Ollama API variants.
+            if r.status_code == 404:
+                fallback = "/api/models" if OLLAMA_MODELS_PATH != "/api/models" else "/api/tags"
+                r = await c.get(f"{OLLAMA_URL}{fallback}")
             if r.status_code >= 400:
                 raise HTTPException(status_code=r.status_code, detail=r.text)
             try:
