@@ -8,8 +8,26 @@ import re
 import time
 import logging
 import httpx
+import sys
+
+from config import get_settings, Settings
+
+# ============================================================================
+# APPLICATION & CONFIGURATION SETUP
+# ============================================================================
 
 app = FastAPI(title="Ollama Proxy (FastAPI)")
+
+# Load and attach settings to app state
+settings = get_settings()
+app.state.settings = settings
+
+# Configure logging based on settings
+logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+
+# ============================================================================
+# SYSTEM PROFILE MANAGEMENT
+# ============================================================================
 
 # Placeholder SYSTEM variable (can be overridden by loading profiles)
 SYSTEM = ""
@@ -26,9 +44,11 @@ def load_system_profile(name: str) -> str | None:
         return None
     if name in SYSTEM_PROFILES:
         return SYSTEM_PROFILES[name]
+
+    s = app.state.settings
     allowed = {
-        "default": Path("Modelfile"),
-        "detailed": Path("Modelfile.detailed"),
+        "default": Path(s.system_default_file),
+        "detailed": Path(s.system_detailed_file),
     }
     path = allowed.get(name)
     if not path or not path.exists():
@@ -40,14 +60,10 @@ def load_system_profile(name: str) -> str | None:
     except Exception:
         return None
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_GENERATE_PATH = os.getenv("OLLAMA_GENERATE_PATH", "/api/generate")
-OLLAMA_MODELS_PATH = os.getenv("OLLAMA_MODELS_PATH", "/api/tags")
-WARMUP_MODEL = os.getenv("WARMUP_MODEL")
-DEFAULT_THINK = os.getenv("OLLAMA_DEFAULT_THINK", "false").lower() in {"1", "true", "yes", "on"}
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 
+# ============================================================================
+# REQUEST/RESPONSE MODELS
+# ============================================================================
 
 class GenerateRequest(BaseModel):
     model: str = Field(min_length=1)
@@ -63,6 +79,10 @@ class SessionResetRequest(BaseModel):
 class SessionGetRequest(BaseModel):
     session_id: str
 
+
+# ============================================================================
+# PAYLOAD BUILDING & PROCESSING HELPERS
+# ============================================================================
 
 def build_payload(req: GenerateRequest) -> dict:
     payload: dict = {"model": req.model, "prompt": req.prompt}
@@ -101,12 +121,13 @@ def build_payload(req: GenerateRequest) -> dict:
             payload["context"] = ctx
 
     # Respect explicit request parameter, otherwise enforce configured default.
-    payload.setdefault("think", DEFAULT_THINK)
+    s = app.state.settings
+    payload.setdefault("think", s.default_think)
     options = payload.get("options")
     if isinstance(options, dict):
-        options.setdefault("think", DEFAULT_THINK)
+        options.setdefault("think", s.default_think)
     elif options is None:
-        payload["options"] = {"think": DEFAULT_THINK}
+        payload["options"] = {"think": s.default_think}
     return payload
 
 
@@ -146,29 +167,36 @@ def append_session_history(session_id: str | None, user_text: str, assistant_tex
         SESSION_HISTORY[session_id] = history[-max_items:]
 
 
+# ============================================================================
+# GLOBAL STATE & CLIENT
+# ============================================================================
+
 client: httpx.AsyncClient | None = None
 SESSION_CONTEXTS: dict[str, list[int]] = {}
 SESSION_HISTORY: dict[str, list[dict[str, str]]] = {}
 # Per-model usage tracking to detect "first loading" (model not used recently)
 MODEL_STATE: dict[str, float] = {}
-# Seconds of idle time after which a model is considered unloaded and will trigger "first_loading"
-MODEL_IDLE_SECONDS = int(os.getenv("MODEL_IDLE_SECONDS", "600"))
 
+
+# ============================================================================
+# FASTAPI LIFECYCLE EVENTS
+# ============================================================================
 
 @app.on_event("startup")
 async def startup_event():
     global client
+    s = app.state.settings
     client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
     # Optional warmup: trigger a tiny request to load model into memory
-    if WARMUP_MODEL and client:
+    if s.warmup_model and client:
         try:
             await client.post(
-                f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}",
-                json={"model": WARMUP_MODEL, "prompt": ""},
+                f"{s.ollama_url}{s.ollama_generate_path}",
+                json={"model": s.warmup_model, "prompt": ""},
                 timeout=5.0,
             )
             # Mark warmup model as recently used so first-loading won't be signaled immediately
-            MODEL_STATE[WARMUP_MODEL] = time.time()
+            MODEL_STATE[s.warmup_model] = time.time()
         except Exception:
             # Non-fatal; warmup best-effort only
             pass
@@ -181,15 +209,20 @@ async def shutdown_event():
         await client.aclose()
 
 
+# ============================================================================
+# API ENDPOINTS
+# ============================================================================
+
 @app.get("/health")
 async def health():
     # Check minimal connectivity to Ollama
+    s = app.state.settings
     try:
         async with httpx.AsyncClient(timeout=5.0) as c:
-            r = await c.get(OLLAMA_URL)
+            r = await c.get(s.ollama_url)
             return {"ok": True, "ollama_status_code": r.status_code}
     except Exception:
-        return {"ok": False, "ollama_url": OLLAMA_URL}
+        return {"ok": False, "ollama_url": s.ollama_url}
 
 
 @app.get("/")
@@ -812,11 +845,12 @@ async def generate(req: GenerateRequest):
     if client is None:
         raise HTTPException(status_code=503, detail="Service not started")
 
+    s = app.state.settings
     payload = build_payload(req)
     # Determine if this request will trigger a "first loading" for the model
     now = time.time()
     last_used = MODEL_STATE.get(req.model)
-    first_loading = (last_used is None) or (now - last_used > MODEL_IDLE_SECONDS)
+    first_loading = (last_used is None) or (now - last_used > s.model_idle_seconds)
     # Mark model as used now (pre-emptively)
     MODEL_STATE[req.model] = now
     # Log whether the request will think / reveal thoughts
@@ -824,7 +858,7 @@ async def generate(req: GenerateRequest):
     logging.info("/generate requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
     start = time.perf_counter()
     try:
-        r = await client.post(f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
+        r = await client.post(f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
         elapsed_ms = (time.perf_counter() - start) * 1000
         logging.info("/generate session=%s model=%s elapsed_ms=%.1f", req.session_id, req.model, elapsed_ms)
     except Exception as e:
@@ -906,18 +940,19 @@ async def generate_stream(req: GenerateRequest):
     if client is None:
         raise HTTPException(status_code=503, detail="Service not started")
 
+    s = app.state.settings
     payload = build_payload(req)
     # Determine if this request will trigger a "first loading" for the model
     now = time.time()
     last_used = MODEL_STATE.get(req.model)
-    first_loading = (last_used is None) or (now - last_used > MODEL_IDLE_SECONDS)
+    first_loading = (last_used is None) or (now - last_used > s.model_idle_seconds)
     # Mark model as used now (pre-emptively)
     MODEL_STATE[req.model] = now
 
     try:
         # Keep upstream stream open for as long as StreamingResponse is iterating.
         start = time.perf_counter()
-        request = client.build_request("POST", f"{OLLAMA_URL}{OLLAMA_GENERATE_PATH}", json=payload)
+        request = client.build_request("POST", f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
         res = await client.send(request, stream=True)
         send_ms = (time.perf_counter() - start) * 1000
         logging.info("/generate/stream session=%s model=%s send_ms=%.1f", req.session_id, req.model, send_ms)
@@ -1018,13 +1053,14 @@ async def generate_stream(req: GenerateRequest):
 @app.get("/models")
 async def models_list():
     """Return the list of available models from the Ollama instance."""
+    s = app.state.settings
     try:
         async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.get(f"{OLLAMA_URL}{OLLAMA_MODELS_PATH}")
+            r = await c.get(f"{s.ollama_url}{s.ollama_models_path}")
             # Backward/forward compatibility across Ollama API variants.
             if r.status_code == 404:
-                fallback = "/api/models" if OLLAMA_MODELS_PATH != "/api/models" else "/api/tags"
-                r = await c.get(f"{OLLAMA_URL}{fallback}")
+                fallback = "/api/models" if s.ollama_models_path != "/api/models" else "/api/tags"
+                r = await c.get(f"{s.ollama_url}{fallback}")
             if r.status_code >= 400:
                 raise HTTPException(status_code=r.status_code, detail=r.text)
             try:

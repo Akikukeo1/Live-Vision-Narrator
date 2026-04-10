@@ -1,2 +1,5 @@
 models/gemma-4-E4B-it-IQ4_XS.gguf
 *.pyc
+
+# Configuration (can be customized per deployment)
+.env

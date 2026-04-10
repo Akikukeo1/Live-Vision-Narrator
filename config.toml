@@ -1,0 +1,32 @@
+# Live-Vision-Narrator Configuration
+#
+# Copy this file to `config.toml` and adjust values as needed.
+# Settings are loaded with the following precedence (highest to lowest):
+#   1. Environment variables (e.g., OLLAMA_URL=...)
+#   2. .env file
+#   3. config.toml file (this file, renamed without .example)
+#   4. Hardcoded defaults in config.py
+
+# Ollama server connection settings
+ollama_url = "http://localhost:11434"
+ollama_generate_path = "/api/generate"
+ollama_models_path = "/api/tags"
+
+# (Optional) Model to warm up on startup for faster first response
+# Leave empty or comment out to disable warmup
+warmup_model = "live-narrator"
+
+# Whether to enable 'think' (internal reasoning/CoT) by default
+# Override per-request via parameters.think in API calls
+default_think = false
+
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = "DEBUG"
+
+# Session management: seconds of idle time before a model is considered unloaded
+# Used to detect "first_loading" status in responses
+model_idle_seconds = 1
+
+# System prompt profile file paths (supports local Modelfiles)
+system_default_file = "Modelfile"
+system_detailed_file = "Modelfile.detailed"
