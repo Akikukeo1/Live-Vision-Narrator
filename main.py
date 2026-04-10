@@ -346,7 +346,7 @@ async def generate(req: GenerateRequest):
                     data["tokens"] = token_info
 
                     logging.info("/generate session=%s model=%s tokens_prompt=%s tokens_response=%s tokens_total=%s",
-                                 req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
+                    req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
                 except ImportError:
                     logging.warning("/generate session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
                 except Exception as e:
