@@ -3,3 +3,4 @@ models/gemma-4-E4B-it-IQ4_XS.gguf
 
 # Configuration (can be customized per deployment)
 .env
+docs/ai_conversation_memo.pdf
