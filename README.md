@@ -194,4 +194,242 @@ curl -X POST http://127.0.0.1:8000/session/get -H "Content-Type: application/jso
 
 ---
 
+## 外部テスト向けセットアップ（UI と API を異なるホストで実行）
+
+### ⚠️ 重要な設定変更
+
+外部からのアクセスを正常に動作させるには、`config.toml` を **必ず以下に変更** してください：
+
+```toml
+# config.toml
+host_ip = "127.0.0.1"   # ← API サーバーをローカルのみに（外部からの直接アクセスを禁止）
+ui_ip = "0.0.0.0"       # ← UI サーバーは外部公開
+```
+
+**理由**：
+- API サーバーを `127.0.0.1` で起動すると、外部からのアクセスを完全に禁止できる
+- すべてのアクセスは UI サーバー（`:8001`）経由になるため、CORS 問題が完全に解決する
+- `0.0.0.0` で API を起動すると、DevTunnels などを通じてアクセス可能になり、不正なリクエスト（`WARNING: Invalid HTTP request received.`）が発生する可能性がある
+
+---
+
+### 推奨方法：UI サーバーをリバースプロキシとして使用
+
+UIだけを外部に公開してテストしたいというシナリオを改善したものです。**推奨アプローチ**は UI サーバーを API へのリバースプロキシとして機能させることです。
+
+#### メリット
+- ✅ CORS 問題が完全に解決（ブラウザから見ると同一オリジン）
+- ✅ 外部ホストからのアクセスが正常に動作
+- ✅ API サーバーのアクセス制御不要（UI経由でのみ呼び出し）
+- ✅ シンプルな Python 設定（Nginx 不要）
+- ✅ リアルタイムストリーミング対応
+
+#### ステップ 1: config.toml を修正
+
+```toml
+host_ip = "127.0.0.1"   # API をローカルのみに
+ui_ip = "0.0.0.0"       # UI を外部公開
+```
+
+#### ステップ 2: サーバを起動
+
+**ターミナル 1 — API サーバ**
+
+```bash
+uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+**ターミナル 2 — UI サーバ**」
+
+```bash
+uvicorn ui:app --host 0.0.0.0 --port 8001
+```
+
+または、`uv` を使用する場合：
+
+```bash
+# ターミナル 1
+uv run main.py
+
+# ターミナル 2
+uv run ui.py
+```
+
+#### ステップ 3: 外部ホストからアクセス
+
+**ブラウザ**で UI にアクセス：
+
+```
+http://<API_サーバーのIP>:8001  # 例: http://192.168.1.1:8001
+```
+
+動作フロー：
+1. ブラウザが `http://192.168.1.1:8001` を開く（UI サーバー）
+2. UI サーバーから HTML/CSS/JS を取得
+3. JavaScript が `/api-config` を呼び出し → UI サーバーが `/api` を返す
+4. UI が `/api/generate/stream` などにリクエストを送信
+5. **UI サーバーが内部的に `http://127.0.0.1:8000/generate/stream` に中継**
+6. API の応答が UI を通じてブラウザに返される
+7. ブラウザ perspective では、すべてが UI オリジン（CORS 問題なし）✅
+
+#### ステップ 4: Ollama サーバーとの通信確認
+
+```bash
+# API サーバーが正常に動作しているか確認
+curl http://127.0.0.1:8000/health
+```
+
+---
+
+### 代替方法（非推奨）：CORS ワイルドカード許可（開発・テスト限定）
+
+**この方法は推奨されません。** 上の推奨方法を使用してください。
+
+| 項目 | リバースプロキシ（推奨）| CORS ワイルドカード（非推奨） |
+|------|-----------------|-------------|
+| セキュリティ | ✅ 高い | ⚠️ テスト限定、セキュアではない |
+| セットアップ | ✅ 簡単 | ✅ も簡単だが推奨されない |
+| パフォーマンス | ✅ 効率的 | ✅ 同等 |
+| Nginx 不要 | ✅ はい | ✅ はい |
+
+CORS ワイルドカードを試す場合（設定を変更しないで環境変数を使用）：
+
+```bash
+# Windows PowerShell
+$env:CORS_ORIGINS = "*"
+$env:API_LOCAL_HOST = "0.0.0.0"  # API を外部バインド（非推奨）
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Linux/macOS (bash)
+export CORS_ORIGINS="*"
+export API_LOCAL_HOST="0.0.0.0"
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+**警告**: この方法は開発・テストのみです。本番では使用しないでください。
+
+---
+
+### 本番環境：Nginx リバースプロキシ構成
+
+さらにセキュアな本番設定として、Nginx でフロントエンドを構成：
+
+```nginx
+# /etc/nginx/sites-enabled/app.conf
+upstream ui {
+    server localhost:8001;
+}
+
+upstream api {
+    server localhost:8000;
+}
+
+server {
+    listen 80;
+    server_name app.example.com;
+
+    # UI を / で提供
+    location / {
+        proxy_pass http://ui;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # API を /api で提供（リバースプロキシ）
+    location /api {
+        proxy_pass http://api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+このとき、サーバーを起動：
+
+```bash
+# API をローカルホストのみ
+uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 &
+
+# UI をローカルホストのみ
+uvicorn ui:app --host 127.0.0.1 --port 8001 &
+
+# Nginx を起動
+sudo systemctl start nginx
+```
+
+アクセス：`https://app.example.com`
+
+---
+
+### トラブルシューティング
+
+**CORS エラーが出ている（CORS ワイルドカード方式）**
+- `CORS_ORIGINS` 環境変数が正しく設定されているか確認
+- `config.toml` の `cors_origins` を確認
+- ブラウザコンソール → Network タブで失敗したリクエストを確認
+
+**リバースプロキシ方式で API に接続できない**
+- API サーバーが `localhost:8000` で起動しているか確認
+- UI サーバーが `0.0.0.0:8001` で起動しているか確認
+- ファイアウォールでポート 8001 がブロックされていないか確認
+
+**UI から `/api-config` を取得できない**
+- ブラウザコンソール → Network タブで `/api-config` のレスポンスを確認
+- 返される `api_base_url` が `/api` であることを確認
+
+**ストリーミングレスポンスが完全に返されない**
+- ブラウザコンソール → Network タブでレスポンスサイズを確認
+- UI サーバーのログで中継処理に問題がないか確認
+
+---
+
+### 環境変数一覧
+
+| 変数 | デフォルト | 説明 |
+|------|-----------|------|
+| `CORS_ORIGINS` | `http://localhost:8001,http://127.0.0.1:8001` | CORS許可オリジン（`,` 区切り、または `*`） |
+| `API_LOCAL_HOST` | `127.0.0.1` | UI サーバーが内部的に API サーバーに接続するアドレス（`localhost`, `127.0.0.1`, `api` など） |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama サーバーの URL |
+
+---
+
+必要なら、`parameters.inner_style`（`human`/`structured`）を受けて自動的に制御タグを付与するサーバ側パッチも作ります。要望があれば続けます。
+```
+
+このとき、CORS 設定を戻す：
+
+```toml
+cors_origins = "http://app.example.com"
+```
+
+### 環境変数一覧
+
+| 変数 | デフォルト | 説明 |
+|------|-----------|------|
+| `API_HOST` | `localhost` | UI から見えるAPI ホスト（`0.0.0.0` で自動選択） |
+| `CORS_ORIGINS` | `http://localhost:8001,http://127.0.0.1:8001` | CORS許可オリジン（`,` 区切り、または `*`） |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama サーバーの URL |
+
+### トラブルシューティング
+
+**CORS エラーが出ている**
+- ブラウザコンソール → Network タブで失敗したリクエストを確認
+- `CORS_ORIGINS` に正しい origin が含まれているか確認
+- 開発中は `CORS_ORIGINS="*"` で一時的にテスト
+
+**API に接続できない**
+- `API_HOST` が正しく設定されているか確認
+- ファイアウォールがポート 8000 / 8001 をブロックしていないか確認
+- `curl -I http://<API_IP>:8000/health` で API の生存確認
+
+**UI から API 設定が取得できない**
+- ブラウザコンソール → `/api-config` エンドポイントのレスポンスを確認
+- 返される `api_base_url` が外部ホストからアクセス可能か確認
+
+---
+
 必要なら、`parameters.inner_style`（`human`/`structured`）を受けて自動的に制御タグを付与するサーバ側パッチも作ります。要望があれば続けます。

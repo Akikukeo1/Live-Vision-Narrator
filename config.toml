@@ -30,11 +30,35 @@ system_default_file = "Modelfile"
 system_detailed_file = "Modelfile.detailed"
 
 # Server ports / ip
-# host_ip: server binding address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
-host_ip = "0.0.0.0"
+# host_ip: server binding address for API (127.0.0.1 for localhost only, 0.0.0.0 for all interfaces)
+# RECOMMENDED: Keep as "127.0.0.1" - external access goes through UI server (reverse proxy)
+host_ip = "127.0.0.1"
 ui_ip = "0.0.0.0"
-# api_host: hostname the browser uses to connect to API (use localhost, 127.0.0.1, or public IP)
+# api_host: hostname the browser uses to connect to API (reverse proxied via UI server)
+# For local testing: "localhost" (UI server proxies to api_local_host internally)
+# For external testing (UI running on different machine): "localhost" (UI still proxies internally)
+# Examples:
+#   api_host = "localhost"          # Default (UI proxies to local API)
+#   api_host = "127.0.0.1"          # Same as localhost
+#   api_host = "api.example.com"    # Custom domain
+# Can also be set via API_HOST environment variable (takes precedence)
 api_host = "localhost"
+
+# api_local_host: local address for UI server to connect to backend API
+# This is used internally by the UI server to proxy /api/* requests
+# The browser connects to the UI server, not directly to this address
+# Examples:
+#   api_local_host = "127.0.0.1"    # Localhost (default)
+#   api_local_host = "localhost"    # Same as 127.0.0.1
+#   api_local_host = "api"          # Docker networking
+# Can also be set via API_LOCAL_HOST environment variable (takes precedence)
+api_local_host = "127.0.0.1"
+
+# cors_origins: CORS allowed origins (comma-separated list)
+# For development/testing: "*" (allow all origins)
+# For production: "http://localhost:8001,http://127.0.0.1:8001" or specific URLs
+# Can also be set via CORS_ORIGINS environment variable (takes precedence)
+cors_origins = "http://localhost:8001,http://127.0.0.1:8001"
 
 api_port = 8000
 ui_port = 8001

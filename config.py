@@ -72,7 +72,15 @@ class Settings(BaseSettings):
     host_ip: str = "0.0.0.0"
     ui_ip: str = "0.0.0.0"
     # api_host: browser-accessible API server hostname (used by UI to connect)
+    # Can be overridden via API_HOST environment variable
     api_host: str = "localhost"
+    # api_local_host: local address for UI server to connect to API (e.g. localhost, 127.0.0.1)
+    # This is separate from host_ip (which is for server binding) and api_host (which is for browser)
+    # Can be overridden via API_LOCAL_HOST environment variable
+    api_local_host: str = "127.0.0.1"
+    # cors_origins: CORS allowed origins (comma-separated, or "*" for dev/test)
+    # Override via CORS_ORIGINS environment variable
+    cors_origins: str = "http://localhost:8001,http://127.0.0.1:8001"
 
     api_port: int = 8000
     ui_port: int = 8001

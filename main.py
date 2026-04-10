@@ -20,9 +20,32 @@ from config import get_settings, Settings
 app = FastAPI(title="Ollama Proxy (FastAPI)")
 
 # Configure CORS for UI served from different port
+def get_cors_origins():
+    """Get CORS allowed origins from environment or config.
+
+    Supports:
+    - CORS_ORIGINS environment variable (comma-separated)
+    - "*" for allow all (development only)
+    - Comma-separated list of origins
+    """
+    cors_env = os.getenv("CORS_ORIGINS")
+    if cors_env:
+        if cors_env == "*":
+            return ["*"]
+        return [origin.strip() for origin in cors_env.split(",")]
+
+    # Fall back to config settings
+    from config import get_settings
+    settings = get_settings()
+    if settings.cors_origins == "*":
+        return ["*"]
+    if "," in settings.cors_origins:
+        return [origin.strip() for origin in settings.cors_origins.split(",")]
+    return [settings.cors_origins]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8001", "http://127.0.0.1:8001"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -567,6 +590,11 @@ async def reset_session(req: SessionResetRequest):
 
 @app.post("/session/get")
 async def get_session(req: SessionGetRequest):
+    """Get session information (history, context metadata).
+
+    Note: context is not serialized to JSON for security and performance.
+    Use /generate or /generate/stream to continue with the session.
+    """
     ctx = SESSION_CONTEXTS.get(req.session_id)
     history = SESSION_HISTORY.get(req.session_id, [])
     return {
@@ -576,7 +604,7 @@ async def get_session(req: SessionGetRequest):
         "context_length": len(ctx) if isinstance(ctx, list) else 0,
         "history_length": len(history),
         "history": history,
-        "context": ctx,
+        # Note: skip "context" field to avoid JSON serialization issues
     }
 
 
