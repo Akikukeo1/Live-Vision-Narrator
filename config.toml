@@ -12,10 +12,6 @@ ollama_url = "http://localhost:11434"
 ollama_generate_path = "/api/generate"
 ollama_models_path = "/api/tags"
 
-# (Optional) Model to warm up on startup for faster first response
-# Leave empty or comment out to disable warmup
-warmup_model = "live-narrator"
-
 # Whether to enable 'think' (internal reasoning/CoT) by default
 # Override per-request via parameters.think in API calls
 default_think = false
@@ -25,7 +21,9 @@ log_level = "DEBUG"
 
 # Session management: seconds of idle time before a model is considered unloaded
 # Used to detect "first_loading" status in responses
-model_idle_seconds = 1
+# Note: Ollama typically keeps models in memory for several minutes. Set this higher
+# to avoid false positives in development (e.g., 4000 miliseconds = 4 seconds).
+model_idle_seconds = 4000
 
 # System prompt profile file paths (supports local Modelfiles)
 system_default_file = "Modelfile"

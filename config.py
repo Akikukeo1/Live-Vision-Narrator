@@ -58,9 +58,6 @@ class Settings(BaseSettings):
     ollama_generate_path: str = "/api/generate"
     ollama_models_path: str = "/api/tags"
 
-    # Model warmup
-    warmup_model: str | None = None
-
     # Default model inference mode
     default_think: bool = False
 
@@ -68,7 +65,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Session management
-    model_idle_seconds: int = 600
+    model_idle_seconds: int = 2000
 
     # System profile file paths
     system_default_file: str = "Modelfile"

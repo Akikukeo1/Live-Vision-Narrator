@@ -187,19 +187,7 @@ async def startup_event():
     global client
     s = app.state.settings
     client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
-    # Optional warmup: trigger a tiny request to load model into memory
-    if s.warmup_model and client:
-        try:
-            await client.post(
-                f"{s.ollama_url}{s.ollama_generate_path}",
-                json={"model": s.warmup_model, "prompt": ""},
-                timeout=5.0,
-            )
-            # Mark warmup model as recently used so first-loading won't be signaled immediately
-            MODEL_STATE[s.warmup_model] = time.time()
-        except Exception:
-            # Non-fatal; warmup best-effort only
-            pass
+    logging.info("Application startup complete. MODEL_STATE will be populated on first request per model.")
 
 
 @app.on_event("shutdown")
@@ -847,12 +835,6 @@ async def generate(req: GenerateRequest):
 
     s = app.state.settings
     payload = build_payload(req)
-    # Determine if this request will trigger a "first loading" for the model
-    now = time.time()
-    last_used = MODEL_STATE.get(req.model)
-    first_loading = (last_used is None) or (now - last_used > s.model_idle_seconds)
-    # Mark model as used now (pre-emptively)
-    MODEL_STATE[req.model] = now
     # Log whether the request will think / reveal thoughts
     reveal = should_reveal_thoughts(req)
     logging.info("/generate requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
@@ -919,9 +901,12 @@ async def generate(req: GenerateRequest):
                 hist = SESSION_HISTORY.setdefault(req.session_id, [])
                 hist.append({"role": "assistant.inner", "text": thinking_text})
 
-        # Surface first-loading info to API clients (UI-agnostic flag)
+        # Determine first_loading based on elapsed time: if elapsed > 1000ms, model is loading
+        first_loading = elapsed_ms > 1000
+        # Surface first_loading and elapsed time to API clients (UI-agnostic)
         try:
             data["first_loading"] = bool(first_loading)
+            data["elapsed_ms"] = round(elapsed_ms, 1)
         except Exception:
             pass
 
@@ -942,12 +927,6 @@ async def generate_stream(req: GenerateRequest):
 
     s = app.state.settings
     payload = build_payload(req)
-    # Determine if this request will trigger a "first loading" for the model
-    now = time.time()
-    last_used = MODEL_STATE.get(req.model)
-    first_loading = (last_used is None) or (now - last_used > s.model_idle_seconds)
-    # Mark model as used now (pre-emptively)
-    MODEL_STATE[req.model] = now
 
     try:
         # Keep upstream stream open for as long as StreamingResponse is iterating.
@@ -972,8 +951,11 @@ async def generate_stream(req: GenerateRequest):
             thinking_parts: list[str] = []
             first_ms = None
             try:
-                # Inform downstream clients (UI or API consumers) that this stream may cause model load
-                header = {"first_loading": bool(first_loading)}
+                # Determine first_loading based on elapsed time from POST to response start
+                # If elapsed_ms > 1000ms, model is likely loading from disk/memory
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                first_loading = elapsed_ms > 1000
+                header = {"first_loading": bool(first_loading), "elapsed_ms": round(elapsed_ms, 1)}
                 yield (json.dumps(header, ensure_ascii=False) + "\n").encode("utf-8")
                 async for line in res.aiter_lines():
                     if not line:
