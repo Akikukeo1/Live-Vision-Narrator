@@ -86,11 +86,11 @@ jobs:
         run: |
           if [ "${{ matrix.task }}" == "lint" ]; then
             echo "--- Lint check (Go + Rust) ---"
-            cd src-go && go vet ./...
+            (cd src-go && go vet ./...)
             cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
           else
             echo "--- Format check (Go + Rust) ---"
             # gofmt: list files that would change (non-zero output indicates failures)
-            cd src-go && gofmt -l -e . || true
+            (cd src-go && gofmt -l -e .) || true
             cargo fmt --manifest-path src-rust/Cargo.toml -- --check
           fi
