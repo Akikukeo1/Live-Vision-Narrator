@@ -3,15 +3,23 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  runner:
+    name: ${{ matrix.task }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        task: [build, test]
+        go-version: ['1.22']
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ matrix.go-version }}
           cache: true
           cache-dependency-path: src-go/go.sum
 
@@ -23,8 +31,45 @@ jobs:
         with:
           workspaces: "src-rust -> target"
 
-      - name: Build & Test
+      - name: Fetch dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
-          go -C src-go build ./...
-          cargo build --manifest-path src-rust/Cargo.toml
-          go -C src-go test ./...
+          go -C src-go mod download
+          cd src-rust && cargo fetch
+
+      - name: Fetch dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          go -C src-go mod download
+          Set-Location src-rust
+          cargo fetch
+
+      - name: Run Task (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          if [ "${{ matrix.task }}" == "build" ]; then
+            echo "Running Build task..."
+            go -C src-go build ./...
+            cargo build --manifest-path src-rust/Cargo.toml
+          else
+            echo "Running Test task..."
+            go -C src-go test ./...
+            cargo test --manifest-path src-rust/Cargo.toml
+          fi
+
+      - name: Run Task (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if ('${{ matrix.task }}' -eq 'build') {
+            Write-Host 'Running Build task...'
+            go -C src-go build ./...
+            cargo build --manifest-path src-rust/Cargo.toml
+          } else {
+            Write-Host 'Running Test task...'
+            go -C src-go test ./...
+            cargo test --manifest-path src-rust/Cargo.toml
+          }
