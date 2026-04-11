@@ -19,7 +19,7 @@ import (
 // Server holds shared resources
 type Server struct {
 	settings        *config.Settings
-	ollamaClient    *api.OllamaClient
+	ollamaClient    api.OllamaAPI
 	aivisClient     *api.AivisClient
 	textProcessor   *processor.TextProcessor
 	sessionContexts sync.Map // map[string][]int

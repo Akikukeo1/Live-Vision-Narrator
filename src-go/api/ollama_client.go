@@ -17,6 +17,12 @@ type OllamaClient struct {
 	baseURL string
 }
 
+// OllamaAPI defines the methods used by the server and allows mocking in tests.
+type OllamaAPI interface {
+	Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error)
+	GenerateStream(ctx context.Context, req *GenerateRequest) (<-chan *GenerateResponse, <-chan error, context.CancelFunc, error)
+}
+
 // GenerateRequest represents a request to the Ollama generate endpoint
 type GenerateRequest struct {
 	Model   string                 `json:"model"`
@@ -87,12 +93,32 @@ func (oc *OllamaClient) Generate(ctx context.Context, req *GenerateRequest) (*Ge
 		return nil, fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var genResp GenerateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&genResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	// Read whole body and try to decode. Ollama may return NDJSON (multiple JSON lines)
+	// even for non-streaming requests; prefer decoding a single JSON, otherwise
+	// fall back to taking the last non-empty JSON line.
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return &genResp, nil
+	var genResp GenerateResponse
+	if err := json.Unmarshal(bodyBytes, &genResp); err == nil {
+		return &genResp, nil
+	}
+
+	// Try parsing as NDJSON and take the last valid JSON object
+	lines := bytes.Split(bytes.TrimSpace(bodyBytes), []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		if len(line) == 0 {
+			continue
+		}
+		if err := json.Unmarshal(line, &genResp); err == nil {
+			return &genResp, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to decode response (tried JSON and NDJSON)")
 }
 
 // GenerateStream sends a streaming request to Ollama and yields responses via channel

@@ -2,6 +2,7 @@
   "name": "live-vision-narrator",
   "scripts": {
     "dev:go": "go -C src-go run main.go",
+    "test:go": "go -C src-go test ./...",
     "build:go": "go -C src-go build -o ../bin/narrator_engine.exe",
     "get:go": "go -C src-go get ./...",
     "tidy:go": "go -C src-go mod tidy",
