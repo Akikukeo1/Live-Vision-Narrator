@@ -52,7 +52,6 @@ type ResponseEnvelope struct {
 
 func main() {
 	settings := config.LoadSettings()
-	unusedVar := "this should fail go vet"
 
 	// Initialize clients
 	ollamaClient := api.NewOllamaClient(settings.OllamaURL)
