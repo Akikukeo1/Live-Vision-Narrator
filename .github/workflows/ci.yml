@@ -50,3 +50,47 @@ jobs:
             go -C src-go test ./...
             cargo test --manifest-path src-rust/Cargo.toml
           fi
+
+  lint-fmt:
+    name: Lint & Format Checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [lint, fmt]
+        go-version: ['1.22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          check-latest: false
+          cache: true
+          cache-dependency-path: "**/go.sum"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-rust -> target"
+          prefix-key: "v3-rust-${{ runner.os }}"
+          cache-targets: true
+
+      - name: Run Lint/Format Check
+        shell: bash
+        run: |
+          if [ "${{ matrix.task }}" == "lint" ]; then
+            echo "--- Lint check (Go + Rust) ---"
+            go -C src-go vet ./...
+            cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
+          else
+            echo "--- Format check (Go + Rust) ---"
+            # gofmt: list files that would change (non-zero output indicates failures)
+            gofmt -l -e src-go || true
+            cargo fmt --manifest-path src-rust/Cargo.toml -- --check
+          fi
