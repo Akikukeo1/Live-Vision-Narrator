@@ -9,7 +9,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # OS ごとにキャッシュを完全に分離するため、OS をキーにします
         os: [ubuntu-latest, windows-latest]
         task: [build, test]
         go-version: ['1.22']
@@ -17,43 +16,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 警告対策: v5 に上げることで内部 Node バージョンを更新
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+          check-latest: false
           cache: true
-          # キャッシュの衝突を防ぐため、OS ごとのパスを指定
           cache-dependency-path: "**/go.sum"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # tar エラー対策: swatinem/rust-cache は内部で OS を識別しますが、
-      # 明示的に prefix を分けることで Windows/Linux 間の衝突を避けます
+      # tar エラー (exit code 2) 対策
+      # prefix-key を更新（v2 -> v3）することで、壊れた可能性のある古いキャッシュを強制破棄します
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-rust -> target"
-          # OS 名をキーに含めてキャッシュを物理的に分ける
-          prefix-key: "v1-rust-${{ runner.os }}"
-
-      - name: Fetch dependencies
-        shell: bash
-        run: |
-          go -C src-go mod download
-          # Rust のフェッチ（Windows での tar 対策として isolation を高める）
-          cd src-rust && cargo fetch
+          # キーを更新してキャッシュをクリーンアップ
+          prefix-key: "v3-rust-${{ runner.os }}"
+          # Ubuntu での展開エラーを避けるため、一旦キャッシュ対象を絞る
+          cache-targets: true
+          # キャッシュの保存に失敗してもジョブ自体は継続させる設定
+          continue-on-error: true
 
       - name: Run Task
         shell: bash
         run: |
           if [ "${{ matrix.task }}" == "build" ]; then
-            echo "--- Running Build Mode ---"
+            echo "--- Fast Build Mode ---"
             go -C src-go build ./...
             cargo build --manifest-path src-rust/Cargo.toml
           else
-            echo "--- Running Test Mode ---"
+            echo "--- Fast Test Mode ---"
             go -C src-go test ./...
             cargo test --manifest-path src-rust/Cargo.toml
           fi
