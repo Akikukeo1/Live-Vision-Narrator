@@ -6,7 +6,7 @@ models/gemma-4-E4B-it-IQ4_XS.gguf
 docs/ai_conversation_memo.pdf
 
 
-# Added by cargo
-
+# Build artifacts
 /target
 engine
+/bin

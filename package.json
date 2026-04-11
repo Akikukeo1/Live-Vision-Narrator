@@ -1,0 +1,14 @@
+{
+  "name": "live-vision-narrator",
+  "scripts": {
+    "dev:go": "cd src-go && air",
+    "build:go": "cd src-go && go build -o ../bin/narrator_engine.exe",
+    "get:go": "cd src-go && go get ./...",
+    "tidy:go": "cd src-go && go mod tidy",
+    "build:rust": "cd src-rust && cargo build --release",
+    "build:all": "pnpm run build:rust && pnpm run build:go",
+    "models:create": "ollama create my-narrator -f ./models/Modelfile",
+    "clean": "rimraf bin/* src-rust/target",
+    "run:go": "cd bin && ./narrator_engine.exe"
+  }
+}

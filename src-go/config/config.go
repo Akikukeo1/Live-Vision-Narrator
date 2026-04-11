@@ -57,7 +57,6 @@ func LoadSettings() *Settings {
 	configPath := "config.toml"
 	if data, err := os.ReadFile(configPath); err == nil {
 		if err := toml.Unmarshal(data, s); err != nil {
-			// Log warning but continue with defaults
 			_ = err
 		}
 	}
@@ -68,9 +67,6 @@ func LoadSettings() *Settings {
 	}
 	if v := os.Getenv("LOG_LEVEL"); v != "" {
 		s.LogLevel = v
-	}
-	if v := os.Getenv("API_PORT"); v != "" {
-		// Parse port if needed, for now just accept as string placeholder
 	}
 
 	return s
