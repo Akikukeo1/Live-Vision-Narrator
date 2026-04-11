@@ -15,133 +15,133 @@ import (
 
 // mockOllama implements api.OllamaAPI for tests
 type mockOllama struct {
-    genResp *api.GenerateResponse
-    genErr  error
+	genResp *api.GenerateResponse
+	genErr  error
 
-    respChan chan *api.GenerateResponse
-    errChan  chan error
+	respChan chan *api.GenerateResponse
+	errChan  chan error
 }
 
 func (m *mockOllama) Generate(ctx context.Context, req *api.GenerateRequest) (*api.GenerateResponse, error) {
-    return m.genResp, m.genErr
+	return m.genResp, m.genErr
 }
 
 func (m *mockOllama) GenerateStream(ctx context.Context, req *api.GenerateRequest) (<-chan *api.GenerateResponse, <-chan error, context.CancelFunc, error) {
-    // If channels aren't provided, create a simple stream
-    if m.respChan == nil {
-        rc := make(chan *api.GenerateResponse, 4)
-        ec := make(chan error, 1)
-        go func() {
-            defer close(rc)
-            defer close(ec)
-            rc <- &api.GenerateResponse{Response: "chunk1", Context: []int{1}}
-            time.Sleep(5 * time.Millisecond)
-            rc <- &api.GenerateResponse{Response: "chunk2", Context: []int{2}}
-        }()
-        m.respChan = rc
-        m.errChan = ec
-    }
+	// If channels aren't provided, create a simple stream
+	if m.respChan == nil {
+		rc := make(chan *api.GenerateResponse, 4)
+		ec := make(chan error, 1)
+		go func() {
+			defer close(rc)
+			defer close(ec)
+			rc <- &api.GenerateResponse{Response: "chunk1", Context: []int{1}}
+			time.Sleep(5 * time.Millisecond)
+			rc <- &api.GenerateResponse{Response: "chunk2", Context: []int{2}}
+		}()
+		m.respChan = rc
+		m.errChan = ec
+	}
 
-    cancel := func() {
-        // best-effort close
-        defer func() { recover() }()
-        select {
-        case <-ctx.Done():
-        default:
-        }
-        // close channels if not already closed
-        // safe to ignore panics
-        go func() {
-            defer func() { recover() }()
-            if m.respChan != nil {
-                close(m.respChan)
-            }
-            if m.errChan != nil {
-                close(m.errChan)
-            }
-        }()
-    }
+	cancel := func() {
+		// best-effort close
+		defer func() { recover() }()
+		select {
+		case <-ctx.Done():
+		default:
+		}
+		// close channels if not already closed
+		// safe to ignore panics
+		go func() {
+			defer func() { recover() }()
+			if m.respChan != nil {
+				close(m.respChan)
+			}
+			if m.errChan != nil {
+				close(m.errChan)
+			}
+		}()
+	}
 
-    return m.respChan, m.errChan, cancel, nil
+	return m.respChan, m.errChan, cancel, nil
 }
 
 func TestHandleHealth_Success(t *testing.T) {
-    s := &Server{ollamaClient: &mockOllama{genResp: &api.GenerateResponse{Response: "ok"}}}
-    req := httptest.NewRequest("GET", "/health", nil)
-    w := httptest.NewRecorder()
-    s.handleHealth(w, req)
+	s := &Server{ollamaClient: &mockOllama{genResp: &api.GenerateResponse{Response: "ok"}}}
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	s.handleHealth(w, req)
 
-    res := w.Result()
-    if res.StatusCode != http.StatusOK {
-        t.Fatalf("expected 200 got %d", res.StatusCode)
-    }
-    var body map[string]interface{}
-    if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
-        t.Fatalf("failed to decode body: %v", err)
-    }
-    if ok, _ := body["ok"].(bool); !ok {
-        t.Fatalf("expected ok true, got %v", body)
-    }
+	res := w.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 got %d", res.StatusCode)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode body: %v", err)
+	}
+	if ok, _ := body["ok"].(bool); !ok {
+		t.Fatalf("expected ok true, got %v", body)
+	}
 }
 
 func TestHandleGenerate_NonStreaming(t *testing.T) {
-    tp := processor.NewTextProcessor()
-    mock := &mockOllama{genResp: &api.GenerateResponse{Response: "mocked response", Context: []int{1, 2, 3}}}
-    s := &Server{ollamaClient: mock, textProcessor: tp}
+	tp := processor.NewTextProcessor()
+	mock := &mockOllama{genResp: &api.GenerateResponse{Response: "mocked response", Context: []int{1, 2, 3}}}
+	s := &Server{ollamaClient: mock, textProcessor: tp}
 
-    payload := `{"model":"live-narrator","prompt":"hello","parameters":{}}`
-    req := httptest.NewRequest("POST", "/generate", strings.NewReader(payload))
-    req.Header.Set("Content-Type", "application/json")
-    w := httptest.NewRecorder()
-    s.handleGenerate(w, req)
+	payload := `{"model":"live-narrator","prompt":"hello","parameters":{}}`
+	req := httptest.NewRequest("POST", "/generate", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.handleGenerate(w, req)
 
-    res := w.Result()
-    if res.StatusCode != http.StatusOK {
-        t.Fatalf("expected 200 got %d", res.StatusCode)
-    }
+	res := w.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 got %d", res.StatusCode)
+	}
 
-    var env ResponseEnvelope
-    if err := json.NewDecoder(res.Body).Decode(&env); err != nil {
-        t.Fatalf("failed to decode response envelope: %v", err)
-    }
-    if env.Response != "mocked response" {
-        t.Fatalf("unexpected response: %s", env.Response)
-    }
-    if len(env.Context) != 3 {
-        t.Fatalf("unexpected context length: %v", env.Context)
-    }
+	var env ResponseEnvelope
+	if err := json.NewDecoder(res.Body).Decode(&env); err != nil {
+		t.Fatalf("failed to decode response envelope: %v", err)
+	}
+	if env.Response != "mocked response" {
+		t.Fatalf("unexpected response: %s", env.Response)
+	}
+	if len(env.Context) != 3 {
+		t.Fatalf("unexpected context length: %v", env.Context)
+	}
 }
 
 func TestHandleGenerateStream(t *testing.T) {
-    tp := processor.NewTextProcessor()
-    // Prepare mock with a streaming channel
-    mock := &mockOllama{}
-    s := &Server{ollamaClient: mock, textProcessor: tp}
+	tp := processor.NewTextProcessor()
+	// Prepare mock with a streaming channel
+	mock := &mockOllama{}
+	s := &Server{ollamaClient: mock, textProcessor: tp}
 
-    payload := `{"model":"live-narrator","prompt":"stream","parameters":{}}`
-    req := httptest.NewRequest("POST", "/generate/stream", strings.NewReader(payload))
-    req.Header.Set("Content-Type", "application/json")
-    w := httptest.NewRecorder()
+	payload := `{"model":"live-narrator","prompt":"stream","parameters":{}}`
+	req := httptest.NewRequest("POST", "/generate/stream", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
 
-    s.handleGenerateStream(w, req)
+	s.handleGenerateStream(w, req)
 
-    res := w.Result()
-    if res.StatusCode != http.StatusOK {
-        t.Fatalf("expected 200 got %d", res.StatusCode)
-    }
+	res := w.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 got %d", res.StatusCode)
+	}
 
-    body := w.Body.String()
-    lines := strings.Split(strings.TrimSpace(body), "\n")
-    if len(lines) < 2 {
-        t.Fatalf("expected multiple NDJSON lines, got: %q", body)
-    }
+	body := w.Body.String()
+	lines := strings.Split(strings.TrimSpace(body), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected multiple NDJSON lines, got: %q", body)
+	}
 
-    // The first line is initial envelope; subsequent lines are stream chunks
-    var chunk api.GenerateResponse
-    if err := json.Unmarshal([]byte(lines[1]), &chunk); err != nil {
-        t.Fatalf("failed to unmarshal chunk: %v; line: %s", err, lines[1])
-    }
-    if chunk.Response == "" {
-        t.Fatalf("expected chunk response, got empty")
-    }
+	// The first line is initial envelope; subsequent lines are stream chunks
+	var chunk api.GenerateResponse
+	if err := json.Unmarshal([]byte(lines[1]), &chunk); err != nil {
+		t.Fatalf("failed to unmarshal chunk: %v; line: %s", err, lines[1])
+	}
+	if chunk.Response == "" {
+		t.Fatalf("expected chunk response, got empty")
+	}
 }
