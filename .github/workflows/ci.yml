@@ -37,8 +37,6 @@ jobs:
           prefix-key: "v3-rust-${{ runner.os }}"
           # Ubuntu での展開エラーを避けるため、一旦キャッシュ対象を絞る
           cache-targets: true
-          # キャッシュの保存に失敗してもジョブ自体は継続させる設定
-          continue-on-error: true
 
       - name: Run Task
         shell: bash
