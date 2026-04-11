@@ -1,5 +1,19 @@
 {
     "recommendations": [
-        "tanvir.ollama-modelfile"
+        "tanvir.ollama-modelfile",
+        "ms-vscode.makefile-tools",
+        "tamasfe.even-better-toml",
+        "golang.go",
+        "lijian-onnx-viewer.onnxviewer",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "ms-python.vscode-python-envs",
+        "donjayamanne.python-extension-pack",
+        "kevinrose.vsc-python-indent",
+        "mechatroner.rainbow-csv",
+        "rust-lang.rust-analyzer",
+        "gruntfuggly.todo-tree",
+        "percy.vscode-pydata-viewer",
+        "redhat.vscode-yaml"
     ]
 }

@@ -1,0 +1,102 @@
+package config
+
+import (
+	"os"
+
+	"github.com/BurntSushi/toml"
+)
+
+// Settings holds the application configuration
+type Settings struct {
+	// Ollama connection
+	OllamaURL          string `toml:"ollama_url"`
+	OllamaGeneratePath string `toml:"ollama_generate_path"`
+	OllamaModelsPath   string `toml:"ollama_models_path"`
+	DefaultThink       bool   `toml:"default_think"`
+	DefaultModel       string `toml:"default_model"`
+
+	// Logging
+	LogLevel string `toml:"log_level"`
+
+	// Server ports
+	HostIP  string `toml:"host_ip"`
+	UIIP    string `toml:"ui_ip"`
+	APIHost string `toml:"api_host"`
+	APIPort int    `toml:"api_port"`
+	UIPort  int    `toml:"ui_port"`
+
+	// System profile file paths
+	SystemDefaultFile  string `toml:"system_default_file"`
+	SystemDetailedFile string `toml:"system_detailed_file"`
+
+	// Session management
+	ModelIdleSeconds int `toml:"model_idle_seconds"`
+}
+
+// LoadSettings loads configuration from config.toml and environment overrides
+func LoadSettings() *Settings {
+	s := &Settings{
+		// Defaults
+		OllamaURL:          "http://localhost:11434",
+		OllamaGeneratePath: "/api/generate",
+		OllamaModelsPath:   "/api/tags",
+		DefaultThink:       false,
+		DefaultModel:       "live-narrator",
+		LogLevel:           "INFO",
+		HostIP:             "0.0.0.0",
+		UIIP:               "0.0.0.0",
+		APIHost:            "localhost",
+		APIPort:            8000,
+		UIPort:             8001,
+		SystemDefaultFile:  "Modelfile",
+		SystemDetailedFile: "Modelfile.detailed",
+		ModelIdleSeconds:   2000,
+	}
+
+	// Try to load from config.toml
+	configPath := "config.toml"
+	if data, err := os.ReadFile(configPath); err == nil {
+		if err := toml.Unmarshal(data, s); err != nil {
+			// Log warning but continue with defaults
+			_ = err
+		}
+	}
+
+	// Environment overrides
+	if v := os.Getenv("OLLAMA_URL"); v != "" {
+		s.OllamaURL = v
+	}
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		s.LogLevel = v
+	}
+	if v := os.Getenv("API_PORT"); v != "" {
+		// Parse port if needed, for now just accept as string placeholder
+	}
+
+	return s
+}
+
+// GetSystemProfilePath returns the path to a system profile file
+func (s *Settings) GetSystemProfilePath(name string) string {
+	switch name {
+	case "default":
+		return s.SystemDefaultFile
+	case "detailed":
+		return s.SystemDetailedFile
+	default:
+		return ""
+	}
+}
+
+// ReadSystemProfile reads a system profile file (if name is allowed)
+func (s *Settings) ReadSystemProfile(name string) (string, error) {
+	path := s.GetSystemProfilePath(name)
+	if path == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}

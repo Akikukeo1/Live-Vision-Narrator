@@ -253,6 +253,11 @@ async def generate(req: GenerateRequest):
         r = await client.post(f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
         elapsed_ms = (time.perf_counter() - start) * 1000
         logging.info("/generate session=%s model=%s elapsed_ms=%.1f", req.session_id, req.model, elapsed_ms)
+        # PROFILE: mark time immediately after receiving Ollama response
+        try:
+            checkpoint_recv_generate = time.perf_counter()
+        except Exception:
+            checkpoint_recv_generate = None
     except Exception as e:
         logging.exception("Error during /generate request")
         raise HTTPException(status_code=500, detail=str(e))
@@ -314,6 +319,18 @@ async def generate(req: GenerateRequest):
         # Surface elapsed time to API clients
         try:
             data["elapsed_ms"] = round(elapsed_ms, 1)
+        except Exception:
+            pass
+
+        # Profiling: measure time between Ollama response receive and token calculation
+        try:
+            checkpoint_before_token_generate = time.perf_counter()
+            try:
+                logging.info("/profile /generate A_ollama_ms=%.2f B_recv_to_preToken_ms=%.2f",
+                             elapsed_ms,
+                             (checkpoint_before_token_generate - checkpoint_recv_generate) * 1000.0)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -390,6 +407,11 @@ async def generate_stream(req: GenerateRequest):
             start = time.perf_counter()
             request = client.build_request("POST", f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
             res = await client.send(request, stream=True)
+            # PROFILE: mark time immediately after receiving the upstream stream
+            try:
+                checkpoint_recv_stream = time.perf_counter()
+            except Exception:
+                checkpoint_recv_stream = None
             send_ms = (time.perf_counter() - start) * 1000
             logging.info("/generate/stream session=%s model=%s send_ms=%.1f", req.session_id, req.model, send_ms)
 
@@ -474,6 +496,18 @@ async def generate_stream(req: GenerateRequest):
                 finally:
                     total_ms = (time.perf_counter() - start) * 1000
                     logging.info("/generate/stream session=%s model=%s total_ms=%.1f first_chunk_ms=%s", req.session_id, req.model, total_ms, f"{first_ms:.1f}" if first_ms is not None else "None")
+
+                    # Profiling: measure time from stream-receive to just before token calculation
+                    try:
+                        checkpoint_before_token_stream = time.perf_counter()
+                        try:
+                            logging.info("/profile /generate/stream A_recv_ms=%.2f B_recv_to_preToken_ms=%.2f",
+                                         (checkpoint_recv_stream - start) * 1000.0 if checkpoint_recv_stream else -1.0,
+                                         (checkpoint_before_token_stream - checkpoint_recv_stream) * 1000.0 if checkpoint_recv_stream else -1.0)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
                     # Calculate token information for streaming response and send to client
                     try:
