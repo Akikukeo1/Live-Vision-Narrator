@@ -52,6 +52,7 @@ type ResponseEnvelope struct {
 
 func main() {
 	settings := config.LoadSettings()
+	unusedVar := "this should fail go vet"
 
 	// Initialize clients
 	ollamaClient := api.NewOllamaClient(settings.OllamaURL)
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	// Setup HTTP routes
-	http.HandleFunc("/health", server.handleHealth)
+						http.HandleFunc("/health", server.handleHealth)
 	http.HandleFunc("/generate", server.handleGenerate)
 	http.HandleFunc("/generate/stream", server.handleGenerateStream)
 	http.HandleFunc("/models", server.handleModels)
