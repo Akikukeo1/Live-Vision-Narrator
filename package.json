@@ -1,14 +1,17 @@
 {
   "name": "live-vision-narrator",
   "scripts": {
-    "dev:go": "cd src-go && air",
-    "build:go": "cd src-go && go build -o ../bin/narrator_engine.exe",
-    "get:go": "cd src-go && go get ./...",
-    "tidy:go": "cd src-go && go mod tidy",
+    "dev:go": "go -C src-go run main.go",
+    "build:go": "go -C src-go build -o ../bin/narrator_engine.exe",
+    "get:go": "go -C src-go get ./...",
+    "tidy:go": "go -C src-go mod tidy",
     "build:rust": "cd src-rust && cargo build --release",
-    "build:all": "pnpm run build:rust && pnpm run build:go",
+    "build:all": "run-p build:go build:rust",
     "models:create": "ollama create my-narrator -f ./models/Modelfile",
-    "clean": "rimraf bin/* src-rust/target",
-    "run:go": "cd bin && ./narrator_engine.exe"
+    "clean": "npx rimraf bin/* src-rust/target",
+    "run:go": "powershell -Command \"& './bin/narrator_engine.exe'\""
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
   }
 }
