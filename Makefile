@@ -1,44 +1,43 @@
 .PHONY: build clean run test
 
-# Build the Go binary
+# Build the Go binary into bin/ (source under src-go)
 build:
-	go build -o engine .
+	go build -o bin/narrator_engine ./src-go
 
-# Run the server
+# Run the server (uses built binary)
 run: build
-	./engine
+	./bin/narrator_engine
 
 # Clean build artifacts
 clean:
-	rm -f engine
+	-rm -f bin/narrator_engine bin/narrator_engine.exe
 
-# Run tests
+# Run tests (run tests in src-go)
 test:
-	go test -v ./...
+	go test -v ./src-go/...
 
-# Format code
+# Format code (src-go)
 fmt:
-	go fmt ./...
+	go fmt ./src-go/...
 
-# Lint
+# Lint (src-go)
 lint:
-	golint ./...
+	golint ./src-go/...
 
 # Dependencies
 deps:
-	go mod download
-	go mod tidy
+	cd src-go && go mod download && go mod tidy
 
 # Development target with hot reload (requires air)
 dev:
-	air
+	cd src-go && air
 
 .PHONY: cross-build-linux cross-build-windows
 
 # Cross-compile for Linux
 cross-build-linux:
-	GOOS=linux GOARCH=amd64 go build -o engine_linux .
+	GOOS=linux GOARCH=amd64 go build -o bin/narrator_engine_linux ./src-go
 
 # Cross-compile for Windows
 cross-build-windows:
-	GOOS=windows GOARCH=amd64 go build -o engine.exe .
+	GOOS=windows GOARCH=amd64 go build -o bin/narrator_engine.exe ./src-go
