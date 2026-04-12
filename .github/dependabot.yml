@@ -26,18 +26,19 @@ updates:
     schedule:
       interval: "daily"
       timezone: "Asia/Tokyo"
-      open-pull-requests-limit: 10
+    open-pull-requests-limit: 10
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "daily"
       timezone: "Asia/Tokyo"
-      open-pull-requests-limit: 10
+    open-pull-requests-limit: 10
   - package-ecosystem: "gomod"
     directory: "/src-go"
     schedule:
       interval: "daily"
       timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 10
   - package-ecosystem: "cargo"
     directory: "/src-rust"
     schedule:
@@ -46,3 +47,4 @@ updates:
     groups:
       rust-dependencies:
         patterns: ["*"]
+    open-pull-requests-limit: 10
