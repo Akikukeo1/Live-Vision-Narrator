@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"live-narrator/api"
+	"live-narrator/config"
 	"live-narrator/processor"
 )
 
@@ -145,5 +146,18 @@ func TestHandleGenerateStream(t *testing.T) {
 	}
 	if chunk.Response == "" {
 		t.Fatalf("expected chunk response, got empty")
+	}
+}
+
+func TestCapContext_LatestTokensKept(t *testing.T) {
+	s := &Server{settings: &config.Settings{MaxContextTokens: 3}}
+	in := []int{1, 2, 3, 4, 5}
+	out := s.capContext(in)
+
+	if len(out) != 3 {
+		t.Fatalf("expected len=3 got %d", len(out))
+	}
+	if out[0] != 3 || out[1] != 4 || out[2] != 5 {
+		t.Fatalf("unexpected result: %#v", out)
 	}
 }

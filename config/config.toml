@@ -25,6 +25,10 @@ log_level = "DEBUG"
 # to avoid false positives in development (e.g., 4000 miliseconds = 4 seconds).
 model_idle_seconds = 4000
 
+# セッションコンテキストの最大保持トークン数（古いトークンは自動で切り詰め）
+# 連続生成で A_recv が伸びる場合は、この値を小さくして調整してください。
+max_context_tokens = 1024
+
 # System prompt profile file paths (supports local Modelfiles)
 system_default_file = "Modelfile"
 system_detailed_file = "Modelfile.detailed"

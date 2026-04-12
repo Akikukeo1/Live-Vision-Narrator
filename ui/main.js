@@ -5,18 +5,10 @@ window.addEventListener('error', (e) => { console.error('UI error', e); });
 let API_BASE_URL = `${location.protocol}//${location.hostname}:8000`; // ローカルホスト型フォールバック
 
 // Fetch API configuration from UI server
-(async () => {
-    try {
-        const response = await fetch('/api-config');
-        if (response.ok) {
-            const config = await response.json();
-            API_BASE_URL = config.api_base_url || API_BASE_URL;
-            console.log('API Base URL configured:', API_BASE_URL);
-        }
-    } catch (err) {
-        console.warn('Failed to fetch API config, using default:', API_BASE_URL, err);
-    }
-})();
+// Note: intentionally do NOT override API_BASE_URL from /api-config to avoid
+// exposing the backend host to the browser (prevents accidental direct calls
+// to the backend which cause CORS errors). The UI uses relative proxy paths
+// (e.g. `/generate`, `/system-profiles`) so this fetch is omitted.
 
 const form = document.getElementById('form');
 const sendBtn = document.getElementById('sendBtn');
@@ -137,7 +129,7 @@ function updateTokenDisplay(tokenDiv, tokens) {
 async function loadSystemProfiles() {
     // 利用可能なシステムプロファイルの一覧を取得してセレクタに入れます
     try {
-        const response = await fetch(API_BASE_URL + '/system-profiles');
+        const response = await fetch('/system-profiles');
         if (!response.ok) return;
         const data = await response.json();
         if (!data.profiles) return;
@@ -258,7 +250,7 @@ async function sendChatMessage(streaming) {
 
     try {
         if (!streaming) {
-            const r = await fetch(API_BASE_URL + '/generate', {
+            const r = await fetch('/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -273,7 +265,7 @@ async function sendChatMessage(streaming) {
             return;
         }
 
-        const r = await fetch(API_BASE_URL + '/generate/stream', {
+        const r = await fetch('/generate/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
@@ -391,7 +383,7 @@ if (resetSessionBtn) {
         const pane = createResponsePane(++requestId, false);
         pane.textContent = '...resetting session';
         try {
-            const r = await fetch(API_BASE_URL + '/session/reset', {
+            const r = await fetch('/session/reset', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId }),
@@ -419,7 +411,7 @@ if (showSessionBtn) {
         const pane = createResponsePane(++requestId, false);
         pane.textContent = '...loading session memory';
         try {
-            const r = await fetch(API_BASE_URL + '/session/get', {
+            const r = await fetch('/session/get', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId }),
@@ -506,7 +498,7 @@ form.addEventListener('submit', async (e) => {
     try {
         if (!stream) {
             pane.textContent = '...sending';
-            const r = await fetch(API_BASE_URL + '/generate', {
+            const r = await fetch('/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -542,7 +534,7 @@ form.addEventListener('submit', async (e) => {
         }
 
         pane.textContent = '';
-        const r = await fetch(API_BASE_URL + '/generate/stream', {
+        const r = await fetch('/generate/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),

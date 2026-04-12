@@ -31,6 +31,7 @@ type Settings struct {
 
 	// Session management
 	ModelIdleSeconds int `toml:"model_idle_seconds"`
+	MaxContextTokens int `toml:"max_context_tokens"`
 }
 
 // LoadSettings は config.toml から設定を読み込み、環境変数で上書きします
@@ -51,6 +52,7 @@ func LoadSettings() *Settings {
 		SystemDefaultFile:  "Modelfile",
 		SystemDetailedFile: "Modelfile.detailed",
 		ModelIdleSeconds:   2000,
+		MaxContextTokens:   1024,
 	}
 
 	// config.toml からの読み込みを試みる

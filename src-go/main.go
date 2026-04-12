@@ -1,3 +1,8 @@
+// @title Live-Narrator API
+// @version 1.0
+// @description Live-Vision-Narrator の API ドキュメント
+// @host localhost:8000
+// @BasePath /
 package main
 
 import (
@@ -14,6 +19,10 @@ import (
 	"live-narrator/config"
 	"live-narrator/processor"
 	"live-narrator/util"
+
+	_ "live-narrator/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // サーバーは共有リソースを保持します
@@ -50,6 +59,27 @@ type ResponseEnvelope struct {
 	Error     string         `json:"error,omitempty"`      // エラーメッセージ（オプション）
 }
 
+// capContext は古いトークンを捨て、最新側のコンテキストだけを保持します。
+// max<=0 の場合は上限なしとして扱います。
+func (s *Server) capContext(ctx []int) []int {
+	if len(ctx) == 0 {
+		return ctx
+	}
+
+	max := 0
+	if s.settings != nil {
+		max = s.settings.MaxContextTokens
+	}
+	if max <= 0 || len(ctx) <= max {
+		return ctx
+	}
+
+	start := len(ctx) - max
+	trimmed := make([]int, max)
+	copy(trimmed, ctx[start:])
+	return trimmed
+}
+
 func main() {
 	settings := config.LoadSettings()
 
@@ -73,6 +103,15 @@ func main() {
 	http.HandleFunc("/session/reset", server.handleSessionReset)
 	http.HandleFunc("/session/get", server.handleSessionGet)
 
+	// Swagger UI を提供 (/swagger/)
+	http.Handle("/swagger/", httpSwagger.WrapHandler)
+	// いくつかの環境で /swagger へのルートが必要なためリダイレクトを追加
+	http.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/swagger/", http.StatusMovedPermanently)
+	})
+	// 明示的に index.html パスも登録
+	http.Handle("/swagger/index.html", httpSwagger.WrapHandler)
+
 	// サーバーを起動
 	addr := fmt.Sprintf("%s:%d", settings.HostIP, settings.APIPort)
 	log.Printf("Starting server on %s", addr)
@@ -80,6 +119,14 @@ func main() {
 }
 
 // handleHealth は Ollama への接続確認を行います
+// Health check
+// @Summary Health check
+// @Description Check connectivity to Ollama
+// @Tags health
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 503 {object} map[string]interface{}
+// @Router /health [get]
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -106,6 +153,17 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGenerate は非ストリーミングのテキスト生成を処理します
+// Generate plain text response
+// @Summary Generate text (non-stream)
+// @Description 非ストリーミングでテキストを生成します。
+// @Tags generate
+// @Accept json
+// @Produce json
+// @Param body body GenerateRequestBody true "Generate request"
+// @Success 200 {object} ResponseEnvelope
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /generate [post]
 func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -139,7 +197,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	// 保存されたセッションコンテキストがあれば取得
 	if req.SessionID != "" {
 		if saved, ok := s.sessionContexts.Load(req.SessionID); ok {
-			ollamaReq.Context = saved.([]int)
+			ollamaReq.Context = s.capContext(saved.([]int))
 		}
 	}
 
@@ -174,7 +232,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	// セッションのコンテキストと会話履歴を保存
 	if req.SessionID != "" {
 		if len(genResp.Context) > 0 {
-			s.sessionContexts.Store(req.SessionID, genResp.Context)
+			s.sessionContexts.Store(req.SessionID, s.capContext(genResp.Context))
 		}
 		history := []HistoryEntry{
 			{Role: "user", Text: req.Prompt},
@@ -214,6 +272,16 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGenerateStream はストリーミング生成を処理します
+// Stream generation (NDJSON)
+// @Summary Generate stream (NDJSON)
+// @Description POST ボディを受け取り NDJSON を逐次返します。各行は JSON チャンクです（最初の行は elapsed info）。
+// @Tags generate
+// @Accept json
+// @Produce application/x-ndjson
+// @Param body body GenerateRequestBody true "Generate stream request"
+// @Success 200 {string} string "NDJSON stream"
+// @Failure 400 {object} map[string]string
+// @Router /generate/stream [post]
 func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -247,7 +315,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	// 保存されたセッションコンテキストがあれば取得
 	if req.SessionID != "" {
 		if saved, ok := s.sessionContexts.Load(req.SessionID); ok {
-			ollamaReq.Context = saved.([]int)
+			ollamaReq.Context = s.capContext(saved.([]int))
 		}
 	}
 
@@ -347,7 +415,7 @@ streamEnd:
 	// セッションコンテキストと会話履歴を保存
 	if req.SessionID != "" {
 		if lastContext != nil {
-			s.sessionContexts.Store(req.SessionID, lastContext)
+			s.sessionContexts.Store(req.SessionID, s.capContext(lastContext))
 		}
 		if len(assistantParts) > 0 {
 			assistantText := strings.Join(assistantParts, "")
@@ -366,6 +434,13 @@ streamEnd:
 }
 
 // handleModels は利用可能なモデル一覧を返します
+// Models list
+// @Summary List models
+// @Description Return the list of available models
+// @Tags models
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /models [get]
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -374,6 +449,15 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSessionReset はセッション状態をリセットします
+// Reset session
+// @Summary Reset session context and history
+// @Description Reset stored context and history for a session
+// @Tags session
+// @Accept json
+// @Produce json
+// @Param body body object true "{\"session_id\": \"...\"}"
+// @Success 200 {object} map[string]interface{}
+// @Router /session/reset [post]
 func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -396,6 +480,15 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSessionGet はセッションデータを取得します
+// Get session
+// @Summary Get session context and history
+// @Description Retrieve stored context and history for a session
+// @Tags session
+// @Accept json
+// @Produce json
+// @Param body body object true "{\"session_id\": \"...\"}"
+// @Success 200 {object} map[string]interface{}
+// @Router /session/get [post]
 func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

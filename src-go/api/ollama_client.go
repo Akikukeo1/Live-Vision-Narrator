@@ -141,8 +141,8 @@ func (oc *OllamaClient) GenerateStream(ctx context.Context, req *GenerateRequest
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		return nil, nil, nil, fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(body))
 	}
 
