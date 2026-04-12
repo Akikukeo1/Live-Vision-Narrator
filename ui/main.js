@@ -141,15 +141,15 @@ async function loadSystemProfiles() {
         if (!response.ok) return;
         const data = await response.json();
         if (!data.profiles) return;
-        
+
         const select = document.getElementById('systemProfile');
         if (!select) return;
-        
+
         // 既存のオプションをクリア（デフォルト値は残す）
         const defaultOption = select.querySelector('option[value=""]');
         select.innerHTML = '';
         if (defaultOption) select.appendChild(defaultOption);
-        
+
         // 取得したプロファイルをオプションに追加
         for (const [key, profile] of Object.entries(data.profiles)) {
             const opt = document.createElement('option');
@@ -250,7 +250,7 @@ async function sendChatMessage(streaming) {
     if (saveInnerToggle && saveInnerToggle.checked) { chatParams.save_inner = true; }
     if (innerDetailSelect && innerDetailSelect.value) { chatParams.inner_detail = innerDetailSelect.value; }
     if (systemProfile && systemProfile.value) { chatParams.system_profile = systemProfile.value; }
-    if (systemOverride && systemOverride.value && systemOverride.value.trim()) { 
+    if (systemOverride && systemOverride.value && systemOverride.value.trim()) {
         chatParams.system_override = systemOverride.value.trim();
     }
 

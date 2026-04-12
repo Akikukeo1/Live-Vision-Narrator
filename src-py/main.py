@@ -87,7 +87,7 @@ def load_system_profile(name: str) -> str | None:
 
 class GenerateRequest(BaseModel):
     """API リクエストスキーマ。
-    
+
     - model: 使用するモデル名（例: "live-narrator"）
     - prompt: ユーザーのプロンプト
     - parameters: オプション。以下のキーを含む dict（サーバ側専用キーはモデルへは転送されません）：
@@ -119,7 +119,7 @@ class SessionGetRequest(BaseModel):
 
 def build_payload(req: GenerateRequest) -> dict:
     """GenerateRequest から Ollama へ送信するペイロードを構築します。
-    
+
     server_keys（reveal_thoughts, save_inner, inner_detail, system_profile, system_override）は
     モデルへは転送されず、サーバが処理します。
     """
@@ -151,7 +151,7 @@ def build_payload(req: GenerateRequest) -> dict:
             if profile_text:
                 # ローカルファイルを選択してロード（セキュア）
                 payload["system"] = profile_text
-        
+
         # 直接生のシステムプロンプト（ローカル開発専用、外部アクセスでは使用を非推奨）
         override = req.parameters.get("system_override")
         if isinstance(override, str) and override.strip():
@@ -645,7 +645,7 @@ async def list_system_profiles():
     """利用可能なシステムプロファイルの一覧を返します。"""
     s = app.state.settings
     profiles = {}
-    
+
     # ローカルで設定されたプロファイルをスキャン
     for name, path_str in [("default", s.system_default_file), ("detailed", s.system_detailed_file)]:
         path = Path(path_str)
@@ -658,14 +658,14 @@ async def list_system_profiles():
                 }
             except Exception:
                 pass
-    
+
     return {"ok": True, "profiles": profiles, "count": len(profiles)}
 
 
 @app.get("/system-profiles/{name}")
 async def get_system_profile(name: str):
     """指定シスステムプロファイルの内容を返します。
-    
+
     セキュリティ上、ローカルファイルのみを返します。
     任意のシステムプロンプト差し替えは parameters.system_override で行ってください。
     """
