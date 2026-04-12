@@ -4,11 +4,12 @@ on: [push, pull_request]
 
 jobs:
   runner:
-    name: ${{ matrix.task }} on ${{ matrix.os }}
+    name: ${{ matrix.task }} (${{ matrix.language }}) on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        language: [go, rust]
         os: [ubuntu-latest, windows-latest]
         task: [build, test]
         go-version: ['1.22']
@@ -17,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Go
+        if: matrix.language == 'go'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
@@ -25,30 +27,37 @@ jobs:
           cache-dependency-path: "**/go.sum"
 
       - name: Set up Rust
+        if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
 
-      # tar エラー (exit code 2) 対策
-      # prefix-key を更新（v2 -> v3）することで、壊れた可能性のある古いキャッシュを強制破棄します
+      # Rust キャッシュ（Rust のみ）
       - name: Cache Rust
+        if: matrix.language == 'rust'
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-rust -> target"
-          # キーを更新してキャッシュをクリーンアップ
           prefix-key: "v3-rust-${{ runner.os }}"
-          # Ubuntu での展開エラーを避けるため、一旦キャッシュ対象を絞る
           cache-targets: true
 
       - name: Run Task
         shell: bash
         run: |
-          if [ "${{ matrix.task }}" == "build" ]; then
-            echo "--- Fast Build Mode ---"
-            go -C src-go build ./...
-            cargo build --manifest-path src-rust/Cargo.toml
+          if [ "${{ matrix.language }}" == "go" ]; then
+            if [ "${{ matrix.task }}" == "build" ]; then
+              echo "--- Go Build on ${{ matrix.os }} ---"
+              (cd src-go && go build ./...)
+            else
+              echo "--- Go Test on ${{ matrix.os }} ---"
+              (cd src-go && go test ./...)
+            fi
           else
-            echo "--- Fast Test Mode ---"
-            go -C src-go test ./...
-            cargo test --manifest-path src-rust/Cargo.toml
+            if [ "${{ matrix.task }}" == "build" ]; then
+              echo "--- Rust Build on ${{ matrix.os }} ---"
+              cargo build --manifest-path src-rust/Cargo.toml
+            else
+              echo "--- Rust Test on ${{ matrix.os }} ---"
+              cargo test --manifest-path src-rust/Cargo.toml
+            fi
           fi
 
   lint-fmt:
