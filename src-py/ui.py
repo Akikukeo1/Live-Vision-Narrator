@@ -1,11 +1,13 @@
 """
-UI Server for Live-Vision-Narrator.
+Live-Vision-NarratorのUIサーバー。
 
-This FastAPI app serves the UI (HTML, CSS, JavaScript) from the `ui/` directory.
-It can run independently from the API server in `main.py`.
+このFastAPIアプリケーションは、`ui/`ディレクトリからUI（HTML、CSS、JavaScript）を提供します。
+APIサーバー（`main.py`）とは独立して動作可能です。
 
-Run with: python ui.py
-or: uvicorn ui:app --reload --port 8001
+以下のコマンドで実行できます:
+    python ui.py
+または:
+    uvicorn ui:app --reload --port 8001
 """
 
 from fastapi import FastAPI

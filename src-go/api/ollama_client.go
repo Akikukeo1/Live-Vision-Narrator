@@ -11,48 +11,48 @@ import (
 	"time"
 )
 
-// OllamaClient handles communication with Ollama server
+// OllamaClient は Ollama サーバーとの通信を処理します
 type OllamaClient struct {
-	client  *http.Client
-	baseURL string
+	client  *http.Client // HTTP クライアント
+	baseURL string       // Ollama サーバーのベースURL
 }
 
-// OllamaAPI defines the methods used by the server and allows mocking in tests.
+// OllamaAPI はサーバーで使用されるメソッドを定義し、テストでモック可能にします
 type OllamaAPI interface {
-	Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error)
-	GenerateStream(ctx context.Context, req *GenerateRequest) (<-chan *GenerateResponse, <-chan error, context.CancelFunc, error)
+	Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error)                                                // 応答を生成
+	GenerateStream(ctx context.Context, req *GenerateRequest) (<-chan *GenerateResponse, <-chan error, context.CancelFunc, error) // ストリーム応答を生成
 }
 
-// GenerateRequest represents a request to the Ollama generate endpoint
+// GenerateRequest は Ollama の生成エンドポイントへのリクエストを表します
 type GenerateRequest struct {
-	Model   string                 `json:"model"`
-	Prompt  string                 `json:"prompt"`
-	System  string                 `json:"system,omitempty"`
-	Stream  bool                   `json:"stream,omitempty"`
-	Options map[string]interface{} `json:"options,omitempty"`
-	Context []int                  `json:"context,omitempty"`
-	Think   bool                   `json:"think,omitempty"`
+	Model   string                 `json:"model"`             // 使用するモデル名
+	Prompt  string                 `json:"prompt"`            // 入力プロンプト
+	System  string                 `json:"system,omitempty"`  // システム設定（オプション）
+	Stream  bool                   `json:"stream,omitempty"`  // ストリームモード
+	Options map[string]interface{} `json:"options,omitempty"` // 追加オプション
+	Context []int                  `json:"context,omitempty"` // コンテキスト情報
+	Think   bool                   `json:"think,omitempty"`   // 思考モード
 }
 
-// GenerateResponse represents a response from Ollama
+// GenerateResponse は Ollama からの応答を表します
 type GenerateResponse struct {
-	Response  string      `json:"response"`
-	Model     string      `json:"model"`
-	CreatedAt string      `json:"created_at"`
-	Done      bool        `json:"done"`
-	Context   []int       `json:"context,omitempty"`
-	Thinking  string      `json:"thinking,omitempty"`
-	Usage     *TokenUsage `json:"usage,omitempty"`
+	Response  string      `json:"response"`           // 応答内容
+	Model     string      `json:"model"`              // 使用されたモデル名
+	CreatedAt string      `json:"created_at"`         // 応答生成日時
+	Done      bool        `json:"done"`               // 応答が完了したかどうか
+	Context   []int       `json:"context,omitempty"`  // コンテキスト情報
+	Thinking  string      `json:"thinking,omitempty"` // 思考過程（オプション）
+	Usage     *TokenUsage `json:"usage,omitempty"`    // トークン使用量
 }
 
-// TokenUsage represents token usage information
+// TokenUsage はトークン使用情報を表します
 type TokenUsage struct {
-	PromptTokens     int `json:"prompt_tokens,omitempty"`
-	CompletionTokens int `json:"completion_tokens,omitempty"`
-	TotalTokens      int `json:"total_tokens,omitempty"`
+	PromptTokens     int `json:"prompt_tokens,omitempty"`     // プロンプトで使用されたトークン数
+	CompletionTokens int `json:"completion_tokens,omitempty"` // 応答生成で使用されたトークン数
+	TotalTokens      int `json:"total_tokens,omitempty"`      // 合計トークン数
 }
 
-// NewOllamaClient creates a new Ollama client with connection pooling
+// NewOllamaClient は接続プーリングを備えた Ollama クライアントを作成します
 func NewOllamaClient(baseURL string) *OllamaClient {
 	transport := &http.Transport{
 		MaxIdleConns:        100,
@@ -73,7 +73,7 @@ func NewOllamaClient(baseURL string) *OllamaClient {
 	}
 }
 
-// Generate sends a non-streaming request to Ollama and returns the response
+// Generate は非ストリーミングのリクエストを Ollama に送り、応答を返します
 func (oc *OllamaClient) Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error) {
 	req.Stream = false
 
@@ -93,9 +93,9 @@ func (oc *OllamaClient) Generate(ctx context.Context, req *GenerateRequest) (*Ge
 		return nil, fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Read whole body and try to decode. Ollama may return NDJSON (multiple JSON lines)
-	// even for non-streaming requests; prefer decoding a single JSON, otherwise
-	// fall back to taking the last non-empty JSON line.
+	// レスポンス本文をすべて読み込みデコードを試みます。Ollama は非ストリーミングでも
+	// NDJSON（複数の JSON 行）を返すことがあるため、まず通常の JSON として解析し、
+	// 失敗した場合は最後の有効な JSON 行を使用します。
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
@@ -106,7 +106,9 @@ func (oc *OllamaClient) Generate(ctx context.Context, req *GenerateRequest) (*Ge
 		return &genResp, nil
 	}
 
-	// Try parsing as NDJSON and take the last valid JSON object
+	// NDJSON として解析を試み、最後の有効な JSON オブジェクトを採用
+	// NOTE: Ollama のレスポンスが NDJSON になる場合に対応しています。
+	// TODO: 必要に応じて NDJSON の解析ロジックを検証し、エッジケース（空行・部分的な行）に対処してください。
 	lines := bytes.Split(bytes.TrimSpace(bodyBytes), []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
@@ -121,8 +123,8 @@ func (oc *OllamaClient) Generate(ctx context.Context, req *GenerateRequest) (*Ge
 	return nil, fmt.Errorf("failed to decode response (tried JSON and NDJSON)")
 }
 
-// GenerateStream sends a streaming request to Ollama and yields responses via channel
-// Returns: channel of responses, error channel, close function
+// GenerateStream はストリーミングリクエストを Ollama に送り、チャネル経由で応答を返します
+// 戻り値: 応答チャネル、エラーチャネル、キャンセル関数
 func (oc *OllamaClient) GenerateStream(ctx context.Context, req *GenerateRequest) (
 	<-chan *GenerateResponse, <-chan error, context.CancelFunc, error) {
 
@@ -144,21 +146,21 @@ func (oc *OllamaClient) GenerateStream(ctx context.Context, req *GenerateRequest
 		return nil, nil, nil, fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Create context for streaming (allows cancellation)
+	// ストリーミング用のコンテキストを作成（キャンセル可能）
 	streamCtx, cancel := context.WithCancel(ctx)
 
-	// Create channels
+	// チャネルを作成
 	responseChan := make(chan *GenerateResponse, 10)
 	errorChan := make(chan error, 1)
 
-	// Start goroutine to read streaming response
+	// ストリーミング応答を読み取るゴルーチンを開始
 	go func() {
 		defer close(responseChan)
 		defer close(errorChan)
 		defer resp.Body.Close()
 
 		scanner := bufio.NewScanner(resp.Body)
-		// Set a larger buffer for efficient line reading
+		// 行読み取り効率を上げるためバッファを拡張
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 1024*1024)
 
@@ -195,7 +197,7 @@ func (oc *OllamaClient) GenerateStream(ctx context.Context, req *GenerateRequest
 	return responseChan, errorChan, cancel, nil
 }
 
-// buildRequest constructs an HTTP request to Ollama
+// buildRequest は Ollama への HTTP リクエストを構築します
 func (oc *OllamaClient) buildRequest(ctx context.Context, req *GenerateRequest) (*http.Request, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {

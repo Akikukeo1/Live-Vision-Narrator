@@ -6,23 +6,23 @@ import (
 	"time"
 )
 
-// AivisClient handles communication with Aivis server for voice synthesis
+// AivisClient は音声合成のための Aivis サーバーとの通信を処理します
 type AivisClient struct {
-	client  *http.Client
-	baseURL string
+	client  *http.Client // HTTP クライアント
+	baseURL string       // Aivis サーバーのベースURL
 }
 
-// NewAivisClient creates a new Aivis client
+// NewAivisClient は新しい Aivis クライアントを作成します
 func NewAivisClient(baseURL string) *AivisClient {
 	transport := &http.Transport{
-		MaxIdleConns:        50,
-		MaxIdleConnsPerHost: 5,
-		IdleConnTimeout:     90 * time.Second,
-		DisableKeepAlives:   false,
+		MaxIdleConns:        50,               // 最大アイドル接続数
+		MaxIdleConnsPerHost: 5,                // ホストごとの最大アイドル接続数
+		IdleConnTimeout:     90 * time.Second, // アイドル接続のタイムアウト
+		DisableKeepAlives:   false,            // Keep-Alive を無効化しない
 	}
 
 	client := &http.Client{
-		Timeout:   30 * time.Second,
+		Timeout:   30 * time.Second, // リクエストのタイムアウト
 		Transport: transport,
 	}
 
@@ -32,32 +32,33 @@ func NewAivisClient(baseURL string) *AivisClient {
 	}
 }
 
-// SynthesisRequest represents a text-to-speech synthesis request
+// SynthesisRequest はテキスト音声合成リクエストを表します
 type SynthesisRequest struct {
-	Text string `json:"text"`
+	Text string `json:"text"` // 合成するテキスト
 }
 
-// SynthesisResponse represents a TTS response
+// SynthesisResponse は音声合成のレスポンスを表します
 type SynthesisResponse struct {
-	Status string `json:"status"`
-	URL    string `json:"url,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Status string `json:"status"`          // ステータス（例: 成功、失敗）
+	URL    string `json:"url,omitempty"`   // 音声ファイルのURL（オプション）
+	Error  string `json:"error,omitempty"` // エラーメッセージ（オプション）
 }
 
-// Synthesize sends text to Aivis for voice synthesis (non-blocking, returns immediately)
+// Synthesize はテキストを Aivis に送信して音声合成を行います（非同期で即時に戻ります）
 func (ac *AivisClient) Synthesize(ctx context.Context, text string) error {
 	if ac.baseURL == "" {
-		// Aivis not configured, skip
+		// Aivis が設定されていない場合はスキップ
 		return nil
 	}
 
-	// Fire-and-forget async call in background
+	// バックグラウンドで fire-and-forget の非同期呼び出し
 	go func() {
 		ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Placeholder: actual implementation would POST to Aivis endpoint
-		// For now, just log
+		// プレースホルダ: 実際の実装では Aivis のエンドポイントに POST します
+		// とりあえずログ等で代替します
+		// TODO: 実運用ではここで Aivis エンドポイントへ POST し、レスポンスを処理する実装が必要です
 		_ = ctxWithTimeout
 		_ = text
 	}()
@@ -65,7 +66,7 @@ func (ac *AivisClient) Synthesize(ctx context.Context, text string) error {
 	return nil
 }
 
-// Close closes the HTTP client
+// Close は HTTP クライアントのアイドル接続を閉じます
 func (ac *AivisClient) Close() error {
 	ac.client.CloseIdleConnections()
 	return nil

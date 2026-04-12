@@ -16,46 +16,46 @@ import (
 	"live-narrator/util"
 )
 
-// Server holds shared resources
+// サーバーは共有リソースを保持します
 type Server struct {
 	settings        *config.Settings
 	ollamaClient    api.OllamaAPI
 	aivisClient     *api.AivisClient
 	textProcessor   *processor.TextProcessor
-	sessionContexts sync.Map // map[string][]int
-	sessionHistory  sync.Map // map[string][]HistoryEntry
+	sessionContexts sync.Map // セッションIDに関連付けられたコンテキスト
+	sessionHistory  sync.Map // セッションIDに関連付けられた会話履歴
 }
 
-// HistoryEntry represents a conversation history entry
+// HistoryEntry は会話履歴のエントリを表します
 type HistoryEntry struct {
-	Role string `json:"role"`
-	Text string `json:"text"`
+	Role string `json:"role"` // 発言者の役割（例: ユーザー、システム）
+	Text string `json:"text"` // 発言内容
 }
 
-// GenerateRequestBody matches the Python API request format
+// GenerateRequestBody は Python API リクエスト形式に一致します
 type GenerateRequestBody struct {
-	Model      string                 `json:"model"`
-	Prompt     string                 `json:"prompt"`
-	Parameters map[string]interface{} `json:"parameters"`
-	SessionID  string                 `json:"session_id"`
+	Model      string                 `json:"model"`      // 使用するモデル名
+	Prompt     string                 `json:"prompt"`     // 入力プロンプト
+	Parameters map[string]interface{} `json:"parameters"` // モデルに渡す追加パラメータ
+	SessionID  string                 `json:"session_id"` // セッションID
 }
 
-// ResponseEnvelope wraps response data with metadata
+// ResponseEnvelope はレスポンスデータをメタデータと共にラップします
 type ResponseEnvelope struct {
-	Response  string         `json:"response"`
-	Thinking  string         `json:"thinking,omitempty"`
-	Tokens    map[string]int `json:"tokens,omitempty"`
-	ElapsedMs float64        `json:"elapsed_ms,omitempty"`
-	Context   []int          `json:"context,omitempty"`
-	Error     string         `json:"error,omitempty"`
+	Response  string         `json:"response"`             // モデルの応答
+	Thinking  string         `json:"thinking,omitempty"`   // モデルの思考過程（オプション）
+	Tokens    map[string]int `json:"tokens,omitempty"`     // トークン使用量
+	ElapsedMs float64        `json:"elapsed_ms,omitempty"` // 経過時間（ミリ秒）
+	Context   []int          `json:"context,omitempty"`    // コンテキスト情報
+	Error     string         `json:"error,omitempty"`      // エラーメッセージ（オプション）
 }
 
 func main() {
 	settings := config.LoadSettings()
 
-	// Initialize clients
+	// クライアントを初期化
 	ollamaClient := api.NewOllamaClient(settings.OllamaURL)
-	aivisClient := api.NewAivisClient("") // Aivis URL from config if available
+	aivisClient := api.NewAivisClient("") // Aivis の URL が設定されていればここで指定
 	textProcessor := processor.NewTextProcessor()
 
 	server := &Server{
@@ -65,7 +65,7 @@ func main() {
 		textProcessor: textProcessor,
 	}
 
-	// Setup HTTP routes
+	// HTTP ルートを設定
 	http.HandleFunc("/health", server.handleHealth)
 	http.HandleFunc("/generate", server.handleGenerate)
 	http.HandleFunc("/generate/stream", server.handleGenerateStream)
@@ -73,13 +73,13 @@ func main() {
 	http.HandleFunc("/session/reset", server.handleSessionReset)
 	http.HandleFunc("/session/get", server.handleSessionGet)
 
-	// Start server
+	// サーバーを起動
 	addr := fmt.Sprintf("%s:%d", settings.HostIP, settings.APIPort)
 	log.Printf("Starting server on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
-// handleHealth checks connectivity to Ollama
+// handleHealth は Ollama への接続確認を行います
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -105,7 +105,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleGenerate handles non-streaming text generation
+// handleGenerate は非ストリーミングのテキスト生成を処理します
 func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -124,7 +124,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	profiler.Mark("req_decoded")
 
-	// Build Ollama request
+	// Ollama リクエストを構築
 	ollamaReq := &api.GenerateRequest{
 		Model:  req.Model,
 		Prompt: req.Prompt,
@@ -136,7 +136,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Retrieve session context if available
+	// 保存されたセッションコンテキストがあれば取得
 	if req.SessionID != "" {
 		if saved, ok := s.sessionContexts.Load(req.SessionID); ok {
 			ollamaReq.Context = saved.([]int)
@@ -145,7 +145,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	profiler.Mark("ollama_req_built")
 
-	// Call Ollama
+	// Ollama を呼び出す
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
@@ -159,7 +159,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process response
+	// レスポンスを処理
 	profiler.Mark("processing_start")
 	revealThoughts := false
 	if req.Parameters != nil {
@@ -171,7 +171,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	cleanedResponse := s.textProcessor.SanitizeResponse(genResp.Response, revealThoughts)
 	profiler.Mark("processing_end")
 
-	// Save session context and history
+	// セッションのコンテキストと会話履歴を保存
 	if req.SessionID != "" {
 		if len(genResp.Context) > 0 {
 			s.sessionContexts.Store(req.SessionID, genResp.Context)
@@ -183,7 +183,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		s.sessionHistory.Store(req.SessionID, history)
 	}
 
-	// Build response
+	// レスポンスを構築
 	envelope := ResponseEnvelope{
 		Response:  cleanedResponse,
 		ElapsedMs: profiler.GetDelta("start", "processing_end"),
@@ -207,12 +207,13 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		profiler.GetDelta("ollama_req_built", "ollama_response_received"),
 		profiler.GetDelta("ollama_response_received", "processing_start"),
 		profiler.GetDelta("start", "response_built"))
+	// TODO: 本番ではプロファイルログの出力レベルや形式を設定可能にすることを検討してください
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(envelope)
 }
 
-// handleGenerateStream handles streaming text generation
+// handleGenerateStream はストリーミング生成を処理します
 func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -231,7 +232,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	}
 	profiler.Mark("req_decoded")
 
-	// Build Ollama request
+	// Ollama リクエストを構築
 	ollamaReq := &api.GenerateRequest{
 		Model:  req.Model,
 		Prompt: req.Prompt,
@@ -243,7 +244,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Retrieve session context if available
+	// 保存されたセッションコンテキストがあれば取得
 	if req.SessionID != "" {
 		if saved, ok := s.sessionContexts.Load(req.SessionID); ok {
 			ollamaReq.Context = saved.([]int)
@@ -252,7 +253,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 
 	profiler.Mark("ollama_req_built")
 
-	// Stream response
+	// ストリーミングで応答を受信
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
@@ -267,12 +268,12 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer streamCancel()
 
-	// Prepare response stream
+	// レスポンスストリームのヘッダを準備
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Send header with timing info
+	// タイミング情報を含むヘッダを送信
 	elapsedHeader := ResponseEnvelope{
 		ElapsedMs: profiler.GetDelta("start", "ollama_stream_started"),
 	}
@@ -280,7 +281,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 		w.Write(append(data, '\n'))
 	}
 
-	// Stream lines from Ollama
+	// Ollama からのストリーム行を逐次処理
 	revealThoughts := false
 	if req.Parameters != nil {
 		if reveal, ok := req.Parameters["reveal_thoughts"].(bool); ok {
@@ -307,7 +308,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 					profiler.GetDelta("streaming_start", "first_chunk"))
 			}
 
-			// Process response
+			// レスポンスを処理
 			if genResp.Response != "" {
 				cleaned := s.textProcessor.SanitizeResponse(genResp.Response, revealThoughts)
 				assistantParts = append(assistantParts, cleaned)
@@ -322,7 +323,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 				lastContext = genResp.Context
 			}
 
-			// Send chunk
+			// チャンクを送信
 			if data, err := json.Marshal(genResp); err == nil {
 				w.Write(append(data, '\n'))
 			}
@@ -343,7 +344,7 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 streamEnd:
 	profiler.Mark("streaming_end")
 
-	// Save session context and history
+	// セッションコンテキストと会話履歴を保存
 	if req.SessionID != "" {
 		if lastContext != nil {
 			s.sessionContexts.Store(req.SessionID, lastContext)
@@ -364,7 +365,7 @@ streamEnd:
 		profiler.GetDelta("start", "streaming_end"))
 }
 
-// handleModels lists available models
+// handleModels は利用可能なモデル一覧を返します
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -372,7 +373,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleSessionReset resets session state
+// handleSessionReset はセッション状態をリセットします
 func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -394,7 +395,7 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleSessionGet retrieves session data
+// handleSessionGet はセッションデータを取得します
 func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

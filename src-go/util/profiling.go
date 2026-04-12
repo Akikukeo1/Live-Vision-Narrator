@@ -5,21 +5,21 @@ import (
 	"time"
 )
 
-// ProfilePoint records a timing checkpoint
+// ProfilePoint はタイミングのチェックポイントを記録します
 type ProfilePoint struct {
 	Name      string
 	TimeMs    float64
 	Timestamp time.Time
 }
 
-// Profiler tracks timing for specific operations
+// Profiler は特定の操作のタイミングを追跡します
 type Profiler struct {
 	start   time.Time
 	points  []ProfilePoint
 	enabled bool
 }
 
-// NewProfiler creates a new profiler
+// NewProfiler は新しいプロファイラを作成します
 func NewProfiler(enabled bool) *Profiler {
 	return &Profiler{
 		start:   time.Now(),
@@ -28,7 +28,7 @@ func NewProfiler(enabled bool) *Profiler {
 	}
 }
 
-// Mark records a timing checkpoint
+// Mark はタイミングのチェックポイントを記録します
 func (p *Profiler) Mark(name string) {
 	if !p.enabled {
 		return
@@ -41,7 +41,7 @@ func (p *Profiler) Mark(name string) {
 	})
 }
 
-// GetDelta returns the time elapsed between two marks
+// GetDelta は2つのマーク間の経過時間を返します
 func (p *Profiler) GetDelta(from, to string) float64 {
 	if !p.enabled {
 		return 0
@@ -66,7 +66,7 @@ func (p *Profiler) GetDelta(from, to string) float64 {
 	return 0
 }
 
-// PrintSummary returns a formatted summary of all marks
+// PrintSummary はすべてのマークのフォーマット済みサマリを返します
 func (p *Profiler) PrintSummary() string {
 	if !p.enabled || len(p.points) == 0 {
 		return ""

@@ -6,7 +6,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Settings holds the application configuration
+// Settings はアプリケーションの設定を保持します
 type Settings struct {
 	// Ollama connection
 	OllamaURL          string `toml:"ollama_url"`
@@ -33,7 +33,7 @@ type Settings struct {
 	ModelIdleSeconds int `toml:"model_idle_seconds"`
 }
 
-// LoadSettings loads configuration from config.toml and environment overrides
+// LoadSettings は config.toml から設定を読み込み、環境変数で上書きします
 func LoadSettings() *Settings {
 	s := &Settings{
 		// Defaults
@@ -53,7 +53,8 @@ func LoadSettings() *Settings {
 		ModelIdleSeconds:   2000,
 	}
 
-	// Try to load from config.toml
+	// config.toml からの読み込みを試みる
+	// NOTE: デフォルトの ModelIdleSeconds=2000 は長めに設定されています。
 	configPath := "config.toml"
 	if data, err := os.ReadFile(configPath); err == nil {
 		if err := toml.Unmarshal(data, s); err != nil {
@@ -61,7 +62,7 @@ func LoadSettings() *Settings {
 		}
 	}
 
-	// Environment overrides
+	// 環境変数による上書き
 	if v := os.Getenv("OLLAMA_URL"); v != "" {
 		s.OllamaURL = v
 	}
@@ -72,7 +73,7 @@ func LoadSettings() *Settings {
 	return s
 }
 
-// GetSystemProfilePath returns the path to a system profile file
+// GetSystemProfilePath はシステムプロファイルファイルへのパスを返します
 func (s *Settings) GetSystemProfilePath(name string) string {
 	switch name {
 	case "default":
@@ -84,7 +85,7 @@ func (s *Settings) GetSystemProfilePath(name string) string {
 	}
 }
 
-// ReadSystemProfile reads a system profile file (if name is allowed)
+// ReadSystemProfile は指定された名前のシステムプロファイルファイルを読み込みます（許可された名前のみ）
 func (s *Settings) ReadSystemProfile(name string) (string, error) {
 	path := s.GetSystemProfilePath(name)
 	if path == "" {

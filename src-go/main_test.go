@@ -13,7 +13,7 @@ import (
 	"live-narrator/processor"
 )
 
-// mockOllama implements api.OllamaAPI for tests
+// mockOllama はテスト用に api.OllamaAPI を実装します
 type mockOllama struct {
 	genResp *api.GenerateResponse
 	genErr  error
@@ -27,7 +27,7 @@ func (m *mockOllama) Generate(ctx context.Context, req *api.GenerateRequest) (*a
 }
 
 func (m *mockOllama) GenerateStream(ctx context.Context, req *api.GenerateRequest) (<-chan *api.GenerateResponse, <-chan error, context.CancelFunc, error) {
-	// If channels aren't provided, create a simple stream
+	// チャネルが提供されていない場合、簡易的なストリームを作成
 	if m.respChan == nil {
 		rc := make(chan *api.GenerateResponse, 4)
 		ec := make(chan error, 1)
@@ -43,14 +43,13 @@ func (m *mockOllama) GenerateStream(ctx context.Context, req *api.GenerateReques
 	}
 
 	cancel := func() {
-		// best-effort close
+		// ベストエフォートでクローズ
 		defer func() { recover() }()
 		select {
 		case <-ctx.Done():
 		default:
 		}
-		// close channels if not already closed
-		// safe to ignore panics
+		// チャネルを閉じる（既に閉じられていても安全に無視）
 		go func() {
 			defer func() { recover() }()
 			if m.respChan != nil {
@@ -61,6 +60,9 @@ func (m *mockOllama) GenerateStream(ctx context.Context, req *api.GenerateReques
 			}
 		}()
 	}
+
+	// NOTE: テスト内の短い Sleep は非決定的なタイミング依存を招く可能性があります。
+	// TODO: より堅牢な同期（チャネル・ヒント）に置き換えることを検討してください。
 
 	return m.respChan, m.errChan, cancel, nil
 }
@@ -114,7 +116,7 @@ func TestHandleGenerate_NonStreaming(t *testing.T) {
 
 func TestHandleGenerateStream(t *testing.T) {
 	tp := processor.NewTextProcessor()
-	// Prepare mock with a streaming channel
+	// ストリーミングチャネルを持つモックを準備
 	mock := &mockOllama{}
 	s := &Server{ollamaClient: mock, textProcessor: tp}
 
@@ -136,7 +138,7 @@ func TestHandleGenerateStream(t *testing.T) {
 		t.Fatalf("expected multiple NDJSON lines, got: %q", body)
 	}
 
-	// The first line is initial envelope; subsequent lines are stream chunks
+	// 1 行目は初期エンベロープ、以降の行はストリームチャンク
 	var chunk api.GenerateResponse
 	if err := json.Unmarshal([]byte(lines[1]), &chunk); err != nil {
 		t.Fatalf("failed to unmarshal chunk: %v; line: %s", err, lines[1])

@@ -7,21 +7,21 @@ import (
 func TestSanitizeResponse(t *testing.T) {
 	tp := NewTextProcessor()
 
-	// Test without think tags
+	// think タグなしのテスト
 	input := "Hello world"
 	result := tp.SanitizeResponse(input, false)
 	if result != "Hello world" {
 		t.Errorf("Expected 'Hello world', got '%s'", result)
 	}
 
-	// Test with think tags (should be removed)
+	// think タグありのテスト（削除されること）
 	inputWithThink := "Before <think>internal thought</think> After"
 	result = tp.SanitizeResponse(inputWithThink, false)
 	if result != "Before  After" {
 		t.Errorf("Expected 'Before  After', got '%s'", result)
 	}
 
-	// Test with reveal_thoughts=true (should keep tags)
+	// reveal_thoughts=true の場合はタグを保持するテスト
 	result = tp.SanitizeResponse(inputWithThink, true)
 	if result != inputWithThink {
 		t.Errorf("Expected original text when revealing thoughts, got '%s'", result)
@@ -37,7 +37,7 @@ func TestExtractInnerVoice(t *testing.T) {
 		t.Errorf("Expected 'My inner thoughts', got '%s'", result)
 	}
 
-	// Test without inner_voice
+	// inner_voice タグなしのテスト
 	noVoice := "Just some text"
 	result = tp.ExtractInnerVoice(noVoice)
 	if result != "" {

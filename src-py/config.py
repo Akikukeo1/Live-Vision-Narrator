@@ -1,10 +1,10 @@
-"""Configuration for Live-Vision-Narrator Ollama Proxy.
+"""Live-Vision-Narrator Ollama Proxyの設定。
 
-Loads settings from multiple sources with precedence:
-    1. Environment variables (highest priority)
-    2. .env file
-    3. config.toml file
-    4. Code defaults (lowest priority)
+複数のソースから設定を読み込み、優先順位は以下の通り:
+    1. 環境変数（最優先）
+    2. .envファイル
+    3. config.tomlファイル
+    4. コードのデフォルト値（最も低い優先度）
 """
 
 import sys
