@@ -62,4 +62,6 @@ async def api_config():
 
 if __name__ == "__main__":
     ui_port = int(os.environ.get("UI_PORT", "8001"))
-    uvicorn.run("src-py.ui:app", host="0.0.0.0", port=ui_port, reload=False)
+    # モジュール名でのインポートは環境によって失敗するため
+    # 直接 app オブジェクトを渡して起動する（ローカル実行向け）
+    uvicorn.run(app, host="0.0.0.0", port=ui_port, reload=False)

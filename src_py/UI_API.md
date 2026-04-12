@@ -2,7 +2,7 @@
 
 ## 概要
 
-このドキュメントは、`src-py/main.py` (API サーバ) の UI 向けエンドポイント仕様をまとめます。
+このドキュメントは、`src_py/main.py` (API サーバ) の UI 向けエンドポイント仕様をまとめます。
 UI（`ui/index.html`, `ui/main.js`）は、このプロトコルに従ってリクエストを送信します。
 
 ---
@@ -219,7 +219,7 @@ UI サーバの場合は `"service": "ui"`。
    - 本番運用では API に認証レイヤーを追加することを検討してください。
 
 2. **CORS**:
-   - API サーバは UI のオリジンに対して CORS を許可します（[src-py/main.py](main.py) 参照）。
+   - API サーバは UI のオリジンに対して CORS を許可します（[src_py/main.py](main.py) 参照）。
    - スマートフォンなど別端末からアクセスする場合は、API ホスト／ポート設定に注意してください。
 
 3. **セッション管理**:
@@ -234,10 +234,10 @@ UI サーバの場合は `"service": "ui"`。
 
 ```bash
 # デフォルトポート（8000）で起動
-python -m uvicorn src-py.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn src_py.main:app --host 0.0.0.0 --port 8000
 
 # あるいは設定ファイルから読み込む場合
-python src-py/main.py
+python src_py/main.py
 ```
 
 ### UI サーバの起動
@@ -248,7 +248,7 @@ export API_HOST=192.168.0.10
 export API_PORT=8000
 export UI_PORT=8001
 
-python -m uvicorn src-py.ui:app --host 0.0.0.0 --port 8001
+python -m uvicorn src_py.ui:app --host 0.0.0.0 --port 8001
 ```
 
 ---
@@ -264,6 +264,6 @@ python -m uvicorn src-py.ui:app --host 0.0.0.0 --port 8001
 
 ## 移行予定
 
-- 本 UI サーバ（`src-py/ui.py`）は Python で主に静的配信を行っています。
+- 本 UI サーバ（`src_py/ui.py`）は Python で主に静的配信を行っています。
 - 将来的に `src-go` へ統合し、Go 側で同等の静的配信と `/system-profiles` ロジックを実装する予定。
 - API 仕様（`/generate`, `/generate/stream` など）は安定版を目指しており、大きな変更は予定していません。
