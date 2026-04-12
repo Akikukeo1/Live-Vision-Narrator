@@ -86,6 +86,19 @@ def load_system_profile(name: str) -> str | None:
 # ============================================================================
 
 class GenerateRequest(BaseModel):
+    """API リクエストスキーマ。
+    
+    - model: 使用するモデル名（例: "live-narrator"）
+    - prompt: ユーザーのプロンプト
+    - parameters: オプション。以下のキーを含む dict（サーバ側専用キーはモデルへは転送されません）：
+        - think: bool - モデルに推論（thinking）させるか（Ollama only）
+        - reveal_thoughts: bool - 内的思考を UI に表示するか
+        - save_inner: bool - 内的思考をセッション履歴に保存するか
+        - inner_detail: str - 思考の詳細度（"short" or "long"）
+        - system_profile: str - プリセットシステムプロファイル名（ローカルファイル読み込み、セキュアな方法）
+        - system_override: str - 直接生のシステムプロンプト（ローカル開発のみ推奨、外部には非公開）
+    - session_id: セッション ID（コンテキスト保持と履歴管理に使用）
+    """
     model: str = Field(min_length=1)
     prompt: str
     parameters: dict | None = None
@@ -105,6 +118,11 @@ class SessionGetRequest(BaseModel):
 # ============================================================================
 
 def build_payload(req: GenerateRequest) -> dict:
+    """GenerateRequest から Ollama へ送信するペイロードを構築します。
+    
+    server_keys（reveal_thoughts, save_inner, inner_detail, system_profile, system_override）は
+    モデルへは転送されず、サーバが処理します。
+    """
     payload: dict = {"model": req.model, "prompt": req.prompt}
     # サーバ内部制御用パラメータ（モデルへは転送しない）
     server_keys = {"reveal_thoughts", "save_inner", "inner_detail", "system_profile", "system_override"}
@@ -126,14 +144,19 @@ def build_payload(req: GenerateRequest) -> dict:
             if isinstance(opts, dict) and "think" in opts:
                 payload["think"] = opts.get("think")
 
-        # If a system profile was requested, try to load it and use it as the system override
+        # プリセットシステムプロファイルを読み込み
         profile = req.parameters.get("system_profile")
         if isinstance(profile, str) and profile.strip():
             profile_text = load_system_profile(profile.strip())
             if profile_text:
-                # Only attach the system override if the client explicitly asked for it.
-                # We do NOT log the content of the profile.
+                # ローカルファイルを選択してロード（セキュア）
                 payload["system"] = profile_text
+        
+        # 直接生のシステムプロンプト（ローカル開発専用、外部アクセスでは使用を非推奨）
+        override = req.parameters.get("system_override")
+        if isinstance(override, str) and override.strip():
+            logging.warning("/generate: system_override が使用されました。ローカル開発のみ推奨。")
+            payload["system"] = override.strip()
 
     if req.session_id and "context" not in payload:
         ctx = SESSION_CONTEXTS.get(req.session_id)
@@ -615,6 +638,41 @@ async def get_session(req: SessionGetRequest):
         "history": history,
         "context": ctx,
     }
+
+
+@app.get("/system-profiles")
+async def list_system_profiles():
+    """利用可能なシステムプロファイルの一覧を返します。"""
+    s = app.state.settings
+    profiles = {}
+    
+    # ローカルで設定されたプロファイルをスキャン
+    for name, path_str in [("default", s.system_default_file), ("detailed", s.system_detailed_file)]:
+        path = Path(path_str)
+        if path.exists():
+            try:
+                profiles[name] = {
+                    "name": name,
+                    "path": str(path),
+                    "exists": True,
+                }
+            except Exception:
+                pass
+    
+    return {"ok": True, "profiles": profiles, "count": len(profiles)}
+
+
+@app.get("/system-profiles/{name}")
+async def get_system_profile(name: str):
+    """指定シスステムプロファイルの内容を返します。
+    
+    セキュリティ上、ローカルファイルのみを返します。
+    任意のシステムプロンプト差し替えは parameters.system_override で行ってください。
+    """
+    profile_text = load_system_profile(name)
+    if profile_text is None:
+        raise HTTPException(status_code=404, detail=f"プロファイル '{name}' が見つかりません")
+    return {"ok": True, "name": name, "content": profile_text}
 
 
 if __name__ == "__main__":

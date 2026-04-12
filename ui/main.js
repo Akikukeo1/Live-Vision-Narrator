@@ -1,8 +1,8 @@
 console.log('Ollama UI script loaded');
 window.addEventListener('error', (e) => { console.error('UI error', e); });
 
-// API Base URL - fetched dynamically from server config
-let API_BASE_URL = 'http://localhost:8000'; // fallback
+// API Base URL - LAN 内のホストを自動判別、デフォルト以外の設定は /api-config から取得
+let API_BASE_URL = `${location.protocol}//${location.hostname}:8000`; // ローカルホスト型フォールバック
 
 // Fetch API configuration from UI server
 (async () => {
@@ -10,7 +10,7 @@ let API_BASE_URL = 'http://localhost:8000'; // fallback
         const response = await fetch('/api-config');
         if (response.ok) {
             const config = await response.json();
-            API_BASE_URL = config.api_base_url;
+            API_BASE_URL = config.api_base_url || API_BASE_URL;
             console.log('API Base URL configured:', API_BASE_URL);
         }
     } catch (err) {
@@ -28,6 +28,7 @@ const showInnerToggle = document.getElementById('showInnerToggle');
 const saveInnerToggle = document.getElementById('saveInnerToggle');
 const innerDetailSelect = document.getElementById('innerDetailSelect');
 const systemProfile = document.getElementById('systemProfile');
+const systemOverride = document.getElementById('systemOverride');
 const responses = document.getElementById('responses');
 let activeController = null;
 let requestId = 0;
@@ -129,6 +130,43 @@ function updateTokenDisplay(tokenDiv, tokens) {
     }
 }
 
+// ============================================================================
+// システムプロファイル管理
+// ============================================================================
+
+async function loadSystemProfiles() {
+    // 利用可能なシステムプロファイルの一覧を取得してセレクタに入れます
+    try {
+        const response = await fetch(API_BASE_URL + '/system-profiles');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.profiles) return;
+        
+        const select = document.getElementById('systemProfile');
+        if (!select) return;
+        
+        // 既存のオプションをクリア（デフォルト値は残す）
+        const defaultOption = select.querySelector('option[value=""]');
+        select.innerHTML = '';
+        if (defaultOption) select.appendChild(defaultOption);
+        
+        // 取得したプロファイルをオプションに追加
+        for (const [key, profile] of Object.entries(data.profiles)) {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = key;
+            select.appendChild(opt);
+        }
+    } catch (err) {
+        console.warn('Failed to load system profiles:', err);
+    }
+}
+
+// Initialize system profiles on page load
+(async () => {
+    await loadSystemProfiles();
+})();
+
 if (sendBtn) {
     sendBtn.addEventListener('click', () => {
         try { form.requestSubmit(); } catch (err) { form.dispatchEvent(new Event('submit', { cancelable: true })); }
@@ -212,6 +250,9 @@ async function sendChatMessage(streaming) {
     if (saveInnerToggle && saveInnerToggle.checked) { chatParams.save_inner = true; }
     if (innerDetailSelect && innerDetailSelect.value) { chatParams.inner_detail = innerDetailSelect.value; }
     if (systemProfile && systemProfile.value) { chatParams.system_profile = systemProfile.value; }
+    if (systemOverride && systemOverride.value && systemOverride.value.trim()) { 
+        chatParams.system_override = systemOverride.value.trim();
+    }
 
     const body = { model: modelName, prompt: text, parameters: chatParams, session_id: sessionId };
 
@@ -435,6 +476,10 @@ form.addEventListener('submit', async (e) => {
     if (saveInnerToggle && saveInnerToggle.checked) { parameters.save_inner = true; }
     if (innerDetailSelect && innerDetailSelect.value) { parameters.inner_detail = innerDetailSelect.value; }
     if (systemProfile && systemProfile.value) { parameters.system_profile = systemProfile.value; }
+    if (systemOverride && systemOverride.value && systemOverride.value.trim()) {
+        parameters.system_override = systemOverride.value.trim();
+        console.warn('system_override を使用します。ローカル開発環境専用です。');
+    }
 
     console.log('Request parameters:', parameters);
 

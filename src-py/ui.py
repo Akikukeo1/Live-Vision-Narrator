@@ -1,62 +1,51 @@
 """
-Live-Vision-Narrator の UI サーバ。
+Live-Vision-Narrator の UI サーバ（軽量版）。
 
-この FastAPI アプリは `ui/` ディレクトリから HTML/CSS/JS を配信します。
-`main.py` の API サーバとは独立して実行可能です。
+このシンプルな FastAPI アプリは `ui/` ディレクトリから静的ファイルを配信し、
+API 設定と基本的なヘルスチェックを提供します。
 
-実行例: python ui.py
-または: uvicorn ui:app --reload --port 8001
+実行例（リポジトリルートから）:
+  python -m uvicorn src-py.ui:app --host 0.0.0.0 --port 8001
 
-# TODO: UI 配信周りのエラーハンドリングを確認してください。
+環境変数:
+  API_HOST: API サーバのホスト（デフォルト: localhost）
+  API_PORT: API サーバのポート（デフォルト: 8000）
+  UI_PORT: UI サーバのポート（デフォルト: 8001）
 """
 
+import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 import uvicorn
-from config import get_settings
-import logging
 
-# ログ設定のために早期に設定を読み込む
-settings = get_settings()
-# UI サーバ用のログ設定
-log_level_val = getattr(logging, settings.log_level.upper(), logging.INFO)
-logging.basicConfig(level=log_level_val)
-for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "httpx"):
-    try:
-        logging.getLogger(logger_name).setLevel(log_level_val)
-    except Exception:
-        pass
+app = FastAPI(title="Live-Vision-Narrator UI (Light)")
 
-app = FastAPI(title="Live-Vision-Narrator UI")
+# ui ディレクトリへの堅牢なパス解決（リポジトリルート/ui を指す）
+ui_dir = Path(__file__).resolve().parent.parent / "ui"
+if not ui_dir.exists():
+    # 互換性のため、同フォルダ内内の ui も試す
+    alt = Path(__file__).resolve().parent / "ui"
+    if alt.exists():
+        ui_dir = alt
 
-# Mount static files (CSS, JS, etc.)
-ui_dir = Path(__file__).parent / "ui"
+# 静的ファイル（CSS, JS）をマウント
 app.mount("/static", StaticFiles(directory=str(ui_dir)), name="static")
 
 
 @app.get("/", response_class=FileResponse)
 async def root():
-    """メインの UI HTML を返します。"""
+    """メイン UI HTML を返します。"""
     index_path = ui_dir / "index.html"
     if not index_path.exists():
-        return {"error": "index.html が見つかりません"}
-    return FileResponse(index_path)
-
-
-@app.get("/ui", response_class=FileResponse)
-async def ui():
-    """メイン UI HTML を返す別ルート。"""
-    index_path = ui_dir / "index.html"
-    if not index_path.exists():
-        return {"error": "index.html が見つかりません"}
+        return JSONResponse({"error": "index.html が見つかりません"}, status_code=404)
     return FileResponse(index_path)
 
 
 @app.get("/health")
 async def health():
-    """Simple health check."""
+    """ヘルスチェック。"""
     return {"ok": True, "service": "ui"}
 
 
@@ -64,14 +53,13 @@ async def health():
 async def api_config():
     """UI に渡す API 設定を返します。
 
-    ブラウザから接続するため `api_host` / `api_port` を使用します。
+    環境変数を優先し、未設定ならデフォルト値を使用します。
     """
-    settings = get_settings()
-    return {
-        "api_base_url": f"http://{settings.api_host}:{settings.api_port}",
-        "api_port": settings.api_port,
-    }
+    api_host = os.environ.get("API_HOST", "localhost")
+    api_port = int(os.environ.get("API_PORT", "8000"))
+    return {"api_base_url": f"http://{api_host}:{api_port}", "api_port": api_port}
 
 
 if __name__ == "__main__":
-    uvicorn.run("ui:app", host=settings.ui_ip, port=settings.ui_port, log_level=settings.log_level.lower(), reload=False)
+    ui_port = int(os.environ.get("UI_PORT", "8001"))
+    uvicorn.run("src-py.ui:app", host="0.0.0.0", port=ui_port, reload=False)
