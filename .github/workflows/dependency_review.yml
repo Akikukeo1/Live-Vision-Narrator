@@ -16,5 +16,6 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           # Provide refs when workflow isn't triggered by a PR event
-          base_ref: ${{ github.event.pull_request.base.ref || github.ref }}
-          head_ref: ${{ github.event.pull_request.head.ref || github.sha }}
+          # Use the correct input names: 'base-ref' and 'head-ref'
+          base-ref: ${{ github.event.pull_request.base.ref || 'main' }}
+          head-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
