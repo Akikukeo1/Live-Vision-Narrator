@@ -57,6 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        language: [go, rust]
         task: [lint, fmt]
         go-version: ['1.22']
 
@@ -64,6 +65,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Go
+        if: matrix.language == 'go'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
@@ -72,9 +74,11 @@ jobs:
           cache-dependency-path: "**/go.sum"
 
       - name: Set up Rust
+        if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
+        if: matrix.language == 'rust'
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-rust -> target"
@@ -84,13 +88,20 @@ jobs:
       - name: Run Lint/Format Check
         shell: bash
         run: |
-          if [ "${{ matrix.task }}" == "lint" ]; then
-            echo "--- Lint check (Go + Rust) ---"
-            (cd src-go && go vet ./...)
-            cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
+          if [ "${{ matrix.language }}" == "go" ]; then
+            if [ "${{ matrix.task }}" == "lint" ]; then
+              echo "--- Lint check (Go) ---"
+              (cd src-go && go vet ./...)
+            else
+              echo "--- Format check (Go) ---"
+              (cd src-go && gofmt -l -e .) || true
+            fi
           else
-            echo "--- Format check (Go + Rust) ---"
-            # gofmt: list files that would change (non-zero output indicates failures)
-            (cd src-go && gofmt -l -e .) || true
-            cargo fmt --manifest-path src-rust/Cargo.toml -- --check
+            if [ "${{ matrix.task }}" == "lint" ]; then
+              echo "--- Lint check (Rust) ---"
+              cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
+            else
+              echo "--- Format check (Rust) ---"
+              cargo fmt --manifest-path src-rust/Cargo.toml -- --check
+            fi
           fi
