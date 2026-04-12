@@ -7,3 +7,4 @@ engine
 /bin
 node_modules
 /src-rust/target
+live-narrator.exe
