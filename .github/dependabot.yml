@@ -1,0 +1,48 @@
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 10
+    groups:
+      # devDependenciesをまとめて1つのPRにする
+      dev-dependencies:
+        dependency-type: "development"
+      # productionの依存はpatchとminorをグループ化
+      production-minor-patch:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      timezone: "Asia/Tokyo"
+      open-pull-requests-limit: 10
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      timezone: "Asia/Tokyo"
+      open-pull-requests-limit: 10
+  - package-ecosystem: "gomod"
+    directory: "/src-go"
+    schedule:
+      interval: "daily"
+      timezone: "Asia/Tokyo"
+  - package-ecosystem: "cargo"
+    directory: "/src-rust"
+    schedule:
+      interval: "daily"
+      timezone: "Asia/Tokyo"
+    groups:
+      rust-dependencies:
+        patterns: ["*"]
