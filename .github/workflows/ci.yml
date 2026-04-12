@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   runner:
-    name: ${{ matrix.task }} (${{ matrix.language }}) on ${{ matrix.os }}
+    name: CI / ${{ matrix.language }} ${{ matrix.task == 'lint' && 'LintCheck' || matrix.task == 'fmt' && 'FmtCheck' || matrix.task == 'build' && 'BuildCheck' || 'Test' }} (${{ matrix.os == 'windows-latest' && 'Win' || 'Ubuntu' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -61,7 +61,7 @@ jobs:
           fi
 
   lint-fmt:
-    name: Lint & Format Checks
+    name: CI / ${{ matrix.language }} ${{ matrix.task == 'lint' && 'LintCheck' || matrix.task == 'fmt' && 'FmtCheck' }} (Ubuntu)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

@@ -1,13 +1,13 @@
 """
-Live-Vision-NarratorのUIサーバー。
+Live-Vision-Narrator の UI サーバ。
 
-このFastAPIアプリケーションは、`ui/`ディレクトリからUI（HTML、CSS、JavaScript）を提供します。
-APIサーバー（`main.py`）とは独立して動作可能です。
+この FastAPI アプリは `ui/` ディレクトリから HTML/CSS/JS を配信します。
+`main.py` の API サーバとは独立して実行可能です。
 
-以下のコマンドで実行できます:
-    python ui.py
-または:
-    uvicorn ui:app --reload --port 8001
+実行例: python ui.py
+または: uvicorn ui:app --reload --port 8001
+
+# TODO: UI 配信周りのエラーハンドリングを確認してください。
 """
 
 from fastapi import FastAPI
@@ -18,9 +18,9 @@ import uvicorn
 from config import get_settings
 import logging
 
-# Load settings early so logging can be configured
+# ログ設定のために早期に設定を読み込む
 settings = get_settings()
-# Configure logging for UI server
+# UI サーバ用のログ設定
 log_level_val = getattr(logging, settings.log_level.upper(), logging.INFO)
 logging.basicConfig(level=log_level_val)
 for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "httpx"):
@@ -38,19 +38,19 @@ app.mount("/static", StaticFiles(directory=str(ui_dir)), name="static")
 
 @app.get("/", response_class=FileResponse)
 async def root():
-    """Serve the main UI HTML."""
+    """メインの UI HTML を返します。"""
     index_path = ui_dir / "index.html"
     if not index_path.exists():
-        return {"error": "index.html not found"}
+        return {"error": "index.html が見つかりません"}
     return FileResponse(index_path)
 
 
 @app.get("/ui", response_class=FileResponse)
 async def ui():
-    """Serve the main UI HTML (alternative route)."""
+    """メイン UI HTML を返す別ルート。"""
     index_path = ui_dir / "index.html"
     if not index_path.exists():
-        return {"error": "index.html not found"}
+        return {"error": "index.html が見つかりません"}
     return FileResponse(index_path)
 
 
@@ -62,9 +62,9 @@ async def health():
 
 @app.get("/api-config")
 async def api_config():
-    """Provide API configuration to UI.
+    """UI に渡す API 設定を返します。
 
-    Uses api_host (browser-accessible) instead of host_ip (server binding).
+    ブラウザから接続するため `api_host` / `api_port` を使用します。
     """
     settings = get_settings()
     return {

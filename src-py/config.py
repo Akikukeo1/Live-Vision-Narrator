@@ -1,10 +1,13 @@
-"""Live-Vision-Narrator Ollama Proxyの設定。
+"""Live-Vision-Narrator の Ollama プロキシ設定。
 
-複数のソースから設定を読み込み、優先順位は以下の通り:
+優先順位で複数ソースから設定を読み込みます:
     1. 環境変数（最優先）
-    2. .envファイル
-    3. config.tomlファイル
-    4. コードのデフォルト値（最も低い優先度）
+    2. .env ファイル
+    3. config.toml ファイル
+    4. コード内のデフォルト（最下位）
+
+# TODO: 翻訳内容のレビューを行ってください。
+# NOTE: 関数名・変数名は慣習的に英語のまま保持しています。
 """
 
 import sys
@@ -14,10 +17,10 @@ from pydantic import ConfigDict
 
 
 def load_toml(path: Path) -> dict:
-    """Load TOML configuration file.
+    """TOML 設定ファイルを読み込みます。
 
-    Supports Python 3.11+ with tomllib, falls back to tomli for earlier versions.
-    Returns empty dict if file not found.
+    Python 3.11+ の場合は標準の `tomllib` を使用し、それ以前は `tomli` を試します。
+    ファイルが見つからない場合は空の dict を返します。
     """
     if not path.exists():
         return {}
@@ -35,15 +38,16 @@ def load_toml(path: Path) -> dict:
         with open(path, "rb") as f:
             return tomllib.load(f)
     except Exception as e:
-        print(f"Warning: Failed to load TOML config from {path}: {e}")
+        # 日本語で警告を出す（動作には影響なし）
+        print(f"警告: {path} から TOML 設定の読み込みに失敗しました: {e}")
         return {}
 
 
 def get_config_path() -> Path:
-    """Get the path to config.toml.
+    """`config.toml` のパスを返します。
 
-    For frozen (PyInstaller) executables, uses the directory of the executable.
-    Otherwise, uses the directory containing this config.py file.
+    PyInstaller 等で frozen 実行ファイルになっている場合は実行ファイルのディレクトリを参照します。
+    それ以外はこのモジュールと同じディレクトリを参照します。
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent / "config.toml"
@@ -51,33 +55,33 @@ def get_config_path() -> Path:
 
 
 class Settings(BaseSettings):
-    """Application settings with environment variable and TOML support."""
+    """アプリケーション設定。環境変数・.env・TOML に対応します。"""
 
     # Ollama connection
     ollama_url: str = "http://localhost:11434"
     ollama_generate_path: str = "/api/generate"
     ollama_models_path: str = "/api/tags"
 
-    # Default model inference mode
+    # デフォルトのモデル推論モード
     default_think: bool = False
 
-    # Logging
+    # ログ設定
     log_level: str = "INFO"
 
-    # Session management
+    # セッション管理
     model_idle_seconds: int = 2000
 
-    # Server ports / ip
-    # host_ip: server binding address (0.0.0.0 = all interfaces)
+    # サーバのバインド先 / ポート
+    # host_ip: サーバがバインドするアドレス（0.0.0.0 = 全インターフェース）
     host_ip: str = "0.0.0.0"
     ui_ip: str = "0.0.0.0"
-    # api_host: browser-accessible API server hostname (used by UI to connect)
+    # api_host: ブラウザからアクセス可能な API ホスト名（UI が接続するために使用）
     api_host: str = "localhost"
 
     api_port: int = 8000
     ui_port: int = 8001
 
-    # System profile file paths
+    # システムプロファイルのファイルパス
     system_default_file: str = "Modelfile"
     system_detailed_file: str = "Modelfile.detailed"
 
@@ -89,9 +93,9 @@ class Settings(BaseSettings):
 
     @classmethod
     def load_from_file(cls) -> "Settings":
-        """Load settings from TOML file, then apply environment variables/env file.
+        """TOML ファイルから設定を読み込み、その後環境変数や .env を適用します。
 
-        Precedence: environment variables > .env > config.toml > defaults
+        優先順: 環境変数 > .env > config.toml > デフォルト
         """
         config_path = get_config_path()
         toml_config = load_toml(config_path)
