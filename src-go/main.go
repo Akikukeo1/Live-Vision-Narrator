@@ -192,6 +192,23 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if think, ok := req.Parameters["think"].(bool); ok {
 			ollamaReq.Think = think
 		}
+
+		var systemOverride string
+		if value, ok := req.Parameters["system_override"].(string); ok {
+			systemOverride = strings.TrimSpace(value)
+		}
+
+		var systemProfile string
+		if value, ok := req.Parameters["system_profile"].(string); ok {
+			systemProfile = strings.TrimSpace(value)
+		}
+
+		switch {
+		case systemOverride != "":
+			ollamaReq.System = systemOverride
+		case systemProfile != "":
+			ollamaReq.System = systemProfile
+		}
 	}
 
 	// 保存されたセッションコンテキストがあれば取得
