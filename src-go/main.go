@@ -132,7 +132,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	_, err := s.ollamaClient.Generate(ctx, &api.GenerateRequest{
-		Model:  "test",
+		Model:  s.settings.DefaultModel,
 		Prompt: "test",
 		Stream: false,
 	})
