@@ -7,7 +7,7 @@ import (
 
 // パフォーマンスのため事前コンパイルした正規表現
 var (
-	thinkTagRegex      = regexp.MustCompile(`(?i)<think>.*?</think>`)
+	thinkTagRegex      = regexp.MustCompile(`(?is)<think>.*?</think>`)
 	innerVoiceTagRegex = regexp.MustCompile(`(?i)<inner_voice>([\s\S]*?)</inner_voice>`)
 )
 
