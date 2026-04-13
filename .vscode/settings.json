@@ -1,0 +1,7 @@
+{
+  "go.goroot": "C:\\Program Files\\Go",
+  "go.useLanguageServer": true,
+  "go.toolsEnvVars": {
+    "GOROOT": "C:\\Program Files\\Go"
+  }
+}
