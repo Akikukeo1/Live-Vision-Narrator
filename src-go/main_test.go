@@ -69,7 +69,10 @@ func (m *mockOllama) GenerateStream(ctx context.Context, req *api.GenerateReques
 }
 
 func TestHandleHealth_Success(t *testing.T) {
-	s := &Server{ollamaClient: &mockOllama{genResp: &api.GenerateResponse{Response: "ok"}}}
+	s := &Server{
+		settings:     &config.Settings{DefaultModel: "live-narrator"},
+		ollamaClient: &mockOllama{genResp: &api.GenerateResponse{Response: "ok"}},
+	}
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 	s.handleHealth(w, req)

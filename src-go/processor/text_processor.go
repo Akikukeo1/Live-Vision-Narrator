@@ -12,8 +12,7 @@ var (
 )
 
 // TextProcessor はテキストのサニタイズやフォーマットを処理します
-type TextProcessor struct {
-}
+type TextProcessor struct{}
 
 // NewTextProcessor は新しいテキストプロセッサを作成します
 func NewTextProcessor() *TextProcessor {

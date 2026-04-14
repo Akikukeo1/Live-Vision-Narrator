@@ -126,8 +126,8 @@ func (oc *OllamaClient) Generate(ctx context.Context, req *GenerateRequest) (*Ge
 // GenerateStream はストリーミングリクエストを Ollama に送り、チャネル経由で応答を返します
 // 戻り値: 応答チャネル、エラーチャネル、キャンセル関数
 func (oc *OllamaClient) GenerateStream(ctx context.Context, req *GenerateRequest) (
-	<-chan *GenerateResponse, <-chan error, context.CancelFunc, error) {
-
+	<-chan *GenerateResponse, <-chan error, context.CancelFunc, error,
+) {
 	req.Stream = true
 
 	httpReq, err := oc.buildRequest(ctx, req)
