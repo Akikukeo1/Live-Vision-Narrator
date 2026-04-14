@@ -82,6 +82,23 @@ jobs:
           cache: true
           cache-dependency-path: "**/go.sum"
 
+      - name: Cache Go build and module cache
+        if: matrix.language == 'go'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            go-cache-${{ runner.os }}-
+
+      - name: Install Go lint/format tools
+        if: matrix.language == 'go'
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          go install mvdan.cc/gofumpt@latest
+
       - name: Set up Rust
         if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
@@ -100,10 +117,10 @@ jobs:
           if [ "${{ matrix.language }}" == "go" ]; then
             if [ "${{ matrix.task }}" == "lint" ]; then
               echo "--- Lint check (Go) ---"
-              (cd src-go && go vet ./...)
+              golangci-lint run --config .golangci.yml ./src-go/...
             else
               echo "--- Format check (Go) ---"
-              (cd src-go && gofmt -l -e .) || true
+              gofumpt -l -e src-go
             fi
           else
             if [ "${{ matrix.task }}" == "lint" ]; then
