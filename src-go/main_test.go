@@ -3,15 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"live-narrator/api"
+	"live-narrator/config"
+	"live-narrator/processor"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"live-narrator/api"
-	"live-narrator/config"
-	"live-narrator/processor"
 )
 
 // mockOllama はテスト用に api.OllamaAPI を実装します
@@ -45,14 +44,14 @@ func (m *mockOllama) GenerateStream(ctx context.Context, req *api.GenerateReques
 
 	cancel := func() {
 		// ベストエフォートでクローズ
-		defer func() { recover() }()
+		defer func() { _ = recover() }()
 		select {
 		case <-ctx.Done():
 		default:
 		}
 		// チャネルを閉じる（既に閉じられていても安全に無視）
 		go func() {
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 			if m.respChan != nil {
 				close(m.respChan)
 			}
