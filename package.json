@@ -12,9 +12,10 @@
       "test:rust": "cd src-rust && cargo test",
 
     "// lint //": "",
-      "lint:check": "run-p lint:go:check lint:go:check:revive lint:rust:check",
+      "lint:check": "run-p lint:go:check lint:go:check:revive lint:go:check:staticcheck lint:rust:check",
       "lint:fix": "run-p lint:go:fix lint:rust:fix",
       "lint:go:check:revive": "revive -config revive.toml -formatter stylish ./src-go/...",
+      "lint:go:check:staticcheck": "staticcheck ./src-go/...",
       "lint:go": "go -C src-go vet ./...",
         "lint:go:check": "go -C src-go vet ./...",
         "lint:go:fix": "echo 'No automatic fix for go vet; run gofmt or goimports as needed'",
