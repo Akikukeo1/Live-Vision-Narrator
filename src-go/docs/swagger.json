@@ -1,0 +1,286 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Live-Vision-Narrator の API ドキュメント",
+        "title": "Live-Narrator API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8000",
+    "basePath": "/",
+    "paths": {
+        "/generate": {
+            "post": {
+                "description": "非ストリーミングでテキストを生成します。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "generate"
+                ],
+                "summary": "Generate text (non-stream)",
+                "parameters": [
+                    {
+                        "description": "Generate request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.GenerateRequestBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.ResponseEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/generate/stream": {
+            "post": {
+                "description": "POST ボディを受け取り NDJSON を逐次返します。各行は JSON チャンクです（最初の行は elapsed info）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/x-ndjson"
+                ],
+                "tags": [
+                    "generate"
+                ],
+                "summary": "Generate stream (NDJSON)",
+                "parameters": [
+                    {
+                        "description": "Generate stream request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.GenerateRequestBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "NDJSON stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Check connectivity to Ollama",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/models": {
+            "get": {
+                "description": "Return the list of available models",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "models"
+                ],
+                "summary": "List models",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/session/get": {
+            "post": {
+                "description": "Retrieve stored context and history for a session",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "Get session context and history",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/session/reset": {
+            "post": {
+                "description": "Reset stored context and history for a session",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "Reset session context and history",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "main.GenerateRequestBody": {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "description": "使用するモデル名",
+                    "type": "string"
+                },
+                "parameters": {
+                    "description": "モデルに渡す追加パラメータ",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "prompt": {
+                    "description": "入力プロンプト",
+                    "type": "string"
+                },
+                "session_id": {
+                    "description": "セッションID",
+                    "type": "string"
+                }
+            }
+        },
+        "main.ResponseEnvelope": {
+            "type": "object",
+            "properties": {
+                "context": {
+                    "description": "コンテキスト情報",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "elapsed_ms": {
+                    "description": "経過時間（ミリ秒）",
+                    "type": "number"
+                },
+                "error": {
+                    "description": "エラーメッセージ（オプション）",
+                    "type": "string"
+                },
+                "response": {
+                    "description": "モデルの応答",
+                    "type": "string"
+                },
+                "thinking": {
+                    "description": "モデルの思考過程（オプション）",
+                    "type": "string"
+                },
+                "tokens": {
+                    "description": "トークン使用量",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                }
+            }
+        }
+    }
+}

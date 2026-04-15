@@ -1,0 +1,21 @@
+name: 'Dependency Review'
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+      - name: 'Dependency Review'
+        uses: actions/dependency-review-action@v4
+        with:
+          # Provide refs when workflow isn't triggered by a PR event
+          # Use the correct input names: 'base-ref' and 'head-ref'
+          base-ref: ${{ github.event.pull_request.base.ref || 'main' }}
+          head-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}

@@ -14,8 +14,11 @@ import sys
 from config import get_settings, Settings
 
 # ============================================================================
-# APPLICATION & CONFIGURATION SETUP
+# アプリケーション設定と初期化
 # ============================================================================
+# TODO: src_py 内のログ日本語化のレビューを行ってください.
+# NOTE: 関数名・ルート名などは英語のまま維持しています。
+# FIXME: 必要であればログフォーマットを統一してください。
 
 app = FastAPI(title="Ollama Proxy (FastAPI)")
 
@@ -43,7 +46,7 @@ for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "ht
         pass
 
 # ============================================================================
-# SYSTEM PROFILE MANAGEMENT
+# システムプロファイル管理
 # ============================================================================
 
 # Placeholder SYSTEM variable (can be overridden by loading profiles)
@@ -53,9 +56,9 @@ SYSTEM = ""
 SYSTEM_PROFILES: dict[str, str] = {}
 
 def load_system_profile(name: str) -> str | None:
-    """Load and cache a named local system profile (e.g. Modelfile.detailed).
+    """ローカルのシステムプロファイル（例: Modelfile.detailed）を読み込みキャッシュします。
 
-    Only allowed profile names should be loaded. Returns profile text or None.
+    許可されたプロファイル名のみを読み込みます。プロファイル本文（str）か None を返します。
     """
     if not name:
         return None
@@ -79,10 +82,23 @@ def load_system_profile(name: str) -> str | None:
 
 
 # ============================================================================
-# REQUEST/RESPONSE MODELS
+# リクエスト/レスポンスのモデル定義
 # ============================================================================
 
 class GenerateRequest(BaseModel):
+    """API リクエストスキーマ。
+
+    - model: 使用するモデル名（例: "live-narrator"）
+    - prompt: ユーザーのプロンプト
+    - parameters: オプション。以下のキーを含む dict（サーバ側専用キーはモデルへは転送されません）：
+        - think: bool - モデルに推論（thinking）させるか（Ollama only）
+        - reveal_thoughts: bool - 内的思考を UI に表示するか
+        - save_inner: bool - 内的思考をセッション履歴に保存するか
+        - inner_detail: str - 思考の詳細度（"short" or "long"）
+        - system_profile: str - プリセットシステムプロファイル名（ローカルファイル読み込み、セキュアな方法）
+        - system_override: str - 直接生のシステムプロンプト（ローカル開発のみ推奨、外部には非公開）
+    - session_id: セッション ID（コンテキスト保持と履歴管理に使用）
+    """
     model: str = Field(min_length=1)
     prompt: str
     parameters: dict | None = None
@@ -98,19 +114,24 @@ class SessionGetRequest(BaseModel):
 
 
 # ============================================================================
-# PAYLOAD BUILDING & PROCESSING HELPERS
+# ペイロード構築 & 処理ヘルパー
 # ============================================================================
 
 def build_payload(req: GenerateRequest) -> dict:
+    """GenerateRequest から Ollama へ送信するペイロードを構築します。
+
+    server_keys（reveal_thoughts, save_inner, inner_detail, system_profile, system_override）は
+    モデルへは転送されず、サーバが処理します。
+    """
     payload: dict = {"model": req.model, "prompt": req.prompt}
-    # Server-only parameter keys that should NOT be forwarded to the model
+    # サーバ内部制御用パラメータ（モデルへは転送しない）
     server_keys = {"reveal_thoughts", "save_inner", "inner_detail", "system_profile", "system_override"}
 
     if req.parameters and isinstance(req.parameters, dict):
         # If client requested reveal_thoughts, inform model via prompt prefix
         if bool(req.parameters.get("reveal_thoughts")):
-            # Tell the model to include inner-voice and mark the prompt —
-            # also set think=true so the model actually emits thinking content.
+            # モデルに内的独白を含めるよう指示し、プロンプトをマーキングします。
+            # 同時に think=true を設定してモデルが内的思考を出力するようにします。
             payload["prompt"] = "[REVEAL_INNER_VOICE]\n" + payload["prompt"]
             payload.setdefault("options", {})
             payload["options"]["think"] = True
@@ -123,21 +144,26 @@ def build_payload(req: GenerateRequest) -> dict:
             if isinstance(opts, dict) and "think" in opts:
                 payload["think"] = opts.get("think")
 
-        # If a system profile was requested, try to load it and use it as the system override
+        # プリセットシステムプロファイルを読み込み
         profile = req.parameters.get("system_profile")
         if isinstance(profile, str) and profile.strip():
             profile_text = load_system_profile(profile.strip())
             if profile_text:
-                # Only attach the system override if the client explicitly asked for it.
-                # We do NOT log the content of the profile.
+                # ローカルファイルを選択してロード（セキュア）
                 payload["system"] = profile_text
+
+        # 直接生のシステムプロンプト（ローカル開発専用、外部アクセスでは使用を非推奨）
+        override = req.parameters.get("system_override")
+        if isinstance(override, str) and override.strip():
+            logging.warning("/generate: system_override が使用されました。ローカル開発のみ推奨。")
+            payload["system"] = override.strip()
 
     if req.session_id and "context" not in payload:
         ctx = SESSION_CONTEXTS.get(req.session_id)
         if ctx is not None:
             payload["context"] = ctx
 
-    # Respect explicit request parameter, otherwise enforce configured default.
+    # 明示的なリクエストパラメータを尊重し、なければ設定のデフォルトを適用します。
     s = app.state.settings
     payload.setdefault("think", s.default_think)
     options = payload.get("options")
@@ -185,7 +211,7 @@ def append_session_history(session_id: str | None, user_text: str, assistant_tex
 
 
 # ============================================================================
-# GLOBAL STATE & CLIENT
+# グローバル状態とクライアント
 # ============================================================================
 
 client: httpx.AsyncClient | None = None
@@ -198,7 +224,7 @@ GENERATE_STREAM_ACTIVE: int = 0
 
 
 # ============================================================================
-# FASTAPI LIFECYCLE EVENTS
+# FastAPI ライフサイクルイベント
 # ============================================================================
 
 @app.on_event("startup")
@@ -206,7 +232,7 @@ async def startup_event():
     global client
     s = app.state.settings
     client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
-    logging.info("Application startup complete. MODEL_STATE will be populated on first request per model.")
+    logging.info("アプリ起動完了。各モデルの初回リクエスト時に MODEL_STATE を更新します。")
 
 
 @app.on_event("shutdown")
@@ -247,14 +273,19 @@ async def generate(req: GenerateRequest):
     payload = build_payload(req)
     # Log whether the request will think / reveal thoughts
     reveal = should_reveal_thoughts(req)
-    logging.info("/generate requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
+    logging.info("/generate リクエスト think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
     start = time.perf_counter()
     try:
         r = await client.post(f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
         elapsed_ms = (time.perf_counter() - start) * 1000
-        logging.info("/generate session=%s model=%s elapsed_ms=%.1f", req.session_id, req.model, elapsed_ms)
+        logging.info("/generate session=%s model=%s 経過ms=%.1f", req.session_id, req.model, elapsed_ms)
+        # PROFILE: mark time immediately after receiving Ollama response
+        try:
+            checkpoint_recv_generate = time.perf_counter()
+        except Exception:
+            checkpoint_recv_generate = None
     except Exception as e:
-        logging.exception("Error during /generate request")
+        logging.exception("/generate リクエスト中にエラーが発生しました。")
         raise HTTPException(status_code=500, detail=str(e))
 
     if r.status_code >= 400:
@@ -317,6 +348,18 @@ async def generate(req: GenerateRequest):
         except Exception:
             pass
 
+        # Profiling: measure time between Ollama response receive and token calculation
+        try:
+            checkpoint_before_token_generate = time.perf_counter()
+            try:
+                logging.info("/profile /generate A_ollama_ms=%.2f B_recv_to_preToken_ms=%.2f",
+                             elapsed_ms,
+                             (checkpoint_before_token_generate - checkpoint_recv_generate) * 1000.0)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         # Calculate and surface token information
         try:
             token_info = {}
@@ -357,9 +400,9 @@ async def generate(req: GenerateRequest):
                     logging.info("/generate session=%s model=%s tokens_prompt=%s tokens_response=%s tokens_total=%s",
                     req.session_id, req.model, prompt_tokens, response_tokens, total_tokens)
                 except ImportError:
-                    logging.warning("/generate session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
+                    logging.warning("/generate session=%s model=%s: tiktoken が利用できないためトークン計算をスキップします", req.session_id, req.model)
                 except Exception as e:
-                    logging.warning("/generate session=%s model=%s token calculation failed: %s", req.session_id, req.model, str(e))
+                    logging.warning("/generate session=%s model=%s: トークン計算に失敗しました: %s", req.session_id, req.model, str(e))
         except Exception:
             pass
 
@@ -370,9 +413,9 @@ async def generate(req: GenerateRequest):
 
 @app.post("/generate/stream")
 async def generate_stream(req: GenerateRequest):
-    """Stream response from Ollama through to the client.
+    """Ollama からのストリームをクライアントへ中継します。
 
-    This keeps streaming logic separate from the UI and non-streaming endpoint.
+    ストリーミングのロジックを UI と非ストリーミングのエンドポイントから分離します。
     """
     global client, GENERATE_STREAM_ACTIVE
     if client is None:
@@ -390,8 +433,13 @@ async def generate_stream(req: GenerateRequest):
             start = time.perf_counter()
             request = client.build_request("POST", f"{s.ollama_url}{s.ollama_generate_path}", json=payload)
             res = await client.send(request, stream=True)
+            # PROFILE: mark time immediately after receiving the upstream stream
+            try:
+                checkpoint_recv_stream = time.perf_counter()
+            except Exception:
+                checkpoint_recv_stream = None
             send_ms = (time.perf_counter() - start) * 1000
-            logging.info("/generate/stream session=%s model=%s send_ms=%.1f", req.session_id, req.model, send_ms)
+            logging.info("/generate/stream session=%s model=%s 送信後ms=%.1f", req.session_id, req.model, send_ms)
 
             if res.status_code >= 400:
                 text = await res.aread()
@@ -400,7 +448,7 @@ async def generate_stream(req: GenerateRequest):
 
             # Log think/reveal for streaming requests too
             reveal = should_reveal_thoughts(req)
-            logging.info("/generate/stream requested think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
+            logging.info("/generate/stream リクエスト think=%s reveal=%s session=%s model=%s", payload.get("think"), reveal, req.session_id, req.model)
 
             async def proxy():
                 latest_ctx = None
@@ -469,11 +517,23 @@ async def generate_stream(req: GenerateRequest):
                 except httpx.StreamClosed:
                     return
                 except Exception:
-                    logging.exception("Error while proxying stream")
+                    logging.exception("ストリーム中継中にエラーが発生しました。")
                     return
                 finally:
                     total_ms = (time.perf_counter() - start) * 1000
                     logging.info("/generate/stream session=%s model=%s total_ms=%.1f first_chunk_ms=%s", req.session_id, req.model, total_ms, f"{first_ms:.1f}" if first_ms is not None else "None")
+
+                    # Profiling: measure time from stream-receive to just before token calculation
+                    try:
+                        checkpoint_before_token_stream = time.perf_counter()
+                        try:
+                            logging.info("/profile /generate/stream A_recv_ms=%.2f B_recv_to_preToken_ms=%.2f",
+                                         (checkpoint_recv_stream - start) * 1000.0 if checkpoint_recv_stream else -1.0,
+                                         (checkpoint_before_token_stream - checkpoint_recv_stream) * 1000.0 if checkpoint_recv_stream else -1.0)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
                     # Calculate token information for streaming response and send to client
                     try:
@@ -509,9 +569,9 @@ async def generate_stream(req: GenerateRequest):
                                 token_chunk = {"done": True, "tokens": token_info}
                                 yield (json.dumps(token_chunk, ensure_ascii=False) + "\n").encode("utf-8")
                         except ImportError:
-                            logging.warning("/generate/stream session=%s model=%s tiktoken not available, skipping token calculation", req.session_id, req.model)
+                            logging.warning("/generate/stream session=%s model=%s: tiktoken が利用できないためトークン計算をスキップします", req.session_id, req.model)
                         except Exception as e:
-                            logging.warning("/generate/stream session=%s model=%s token calculation failed: %s", req.session_id, req.model, str(e))
+                            logging.warning("/generate/stream session=%s model=%s: トークン計算に失敗しました: %s", req.session_id, req.model, str(e))
                     except Exception:
                         pass
 
@@ -578,6 +638,41 @@ async def get_session(req: SessionGetRequest):
         "history": history,
         "context": ctx,
     }
+
+
+@app.get("/system-profiles")
+async def list_system_profiles():
+    """利用可能なシステムプロファイルの一覧を返します。"""
+    s = app.state.settings
+    profiles = {}
+
+    # ローカルで設定されたプロファイルをスキャン
+    for name, path_str in [("default", s.system_default_file), ("detailed", s.system_detailed_file)]:
+        path = Path(path_str)
+        if path.exists():
+            try:
+                profiles[name] = {
+                    "name": name,
+                    "path": str(path),
+                    "exists": True,
+                }
+            except Exception:
+                pass
+
+    return {"ok": True, "profiles": profiles, "count": len(profiles)}
+
+
+@app.get("/system-profiles/{name}")
+async def get_system_profile(name: str):
+    """指定シスステムプロファイルの内容を返します。
+
+    セキュリティ上、ローカルファイルのみを返します。
+    任意のシステムプロンプト差し替えは parameters.system_override で行ってください。
+    """
+    profile_text = load_system_profile(name)
+    if profile_text is None:
+        raise HTTPException(status_code=404, detail=f"プロファイル '{name}' が見つかりません")
+    return {"ok": True, "name": name, "content": profile_text}
 
 
 if __name__ == "__main__":

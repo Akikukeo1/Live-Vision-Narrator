@@ -1,22 +1,14 @@
 console.log('Ollama UI script loaded');
 window.addEventListener('error', (e) => { console.error('UI error', e); });
 
-// API Base URL - fetched dynamically from server config
-let API_BASE_URL = 'http://localhost:8000'; // fallback
+// API Base URL - LAN 内のホストを自動判別、デフォルト以外の設定は /api-config から取得
+let API_BASE_URL = `${location.protocol}//${location.hostname}:8000`; // ローカルホスト型フォールバック
 
 // Fetch API configuration from UI server
-(async () => {
-    try {
-        const response = await fetch('/api-config');
-        if (response.ok) {
-            const config = await response.json();
-            API_BASE_URL = config.api_base_url;
-            console.log('API Base URL configured:', API_BASE_URL);
-        }
-    } catch (err) {
-        console.warn('Failed to fetch API config, using default:', API_BASE_URL, err);
-    }
-})();
+// Note: intentionally do NOT override API_BASE_URL from /api-config to avoid
+// exposing the backend host to the browser (prevents accidental direct calls
+// to the backend which cause CORS errors). The UI uses relative proxy paths
+// (e.g. `/generate`, `/system-profiles`) so this fetch is omitted.
 
 const form = document.getElementById('form');
 const sendBtn = document.getElementById('sendBtn');
@@ -28,6 +20,7 @@ const showInnerToggle = document.getElementById('showInnerToggle');
 const saveInnerToggle = document.getElementById('saveInnerToggle');
 const innerDetailSelect = document.getElementById('innerDetailSelect');
 const systemProfile = document.getElementById('systemProfile');
+const systemOverride = document.getElementById('systemOverride');
 const responses = document.getElementById('responses');
 let activeController = null;
 let requestId = 0;
@@ -129,6 +122,43 @@ function updateTokenDisplay(tokenDiv, tokens) {
     }
 }
 
+// ============================================================================
+// システムプロファイル管理
+// ============================================================================
+
+async function loadSystemProfiles() {
+    // 利用可能なシステムプロファイルの一覧を取得してセレクタに入れます
+    try {
+        const response = await fetch('/system-profiles');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.profiles) return;
+
+        const select = document.getElementById('systemProfile');
+        if (!select) return;
+
+        // 既存のオプションをクリア（デフォルト値は残す）
+        const defaultOption = select.querySelector('option[value=""]');
+        select.innerHTML = '';
+        if (defaultOption) select.appendChild(defaultOption);
+
+        // 取得したプロファイルをオプションに追加
+        for (const [key, profile] of Object.entries(data.profiles)) {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = key;
+            select.appendChild(opt);
+        }
+    } catch (err) {
+        console.warn('Failed to load system profiles:', err);
+    }
+}
+
+// Initialize system profiles on page load
+(async () => {
+    await loadSystemProfiles();
+})();
+
 if (sendBtn) {
     sendBtn.addEventListener('click', () => {
         try { form.requestSubmit(); } catch (err) { form.dispatchEvent(new Event('submit', { cancelable: true })); }
@@ -212,12 +242,15 @@ async function sendChatMessage(streaming) {
     if (saveInnerToggle && saveInnerToggle.checked) { chatParams.save_inner = true; }
     if (innerDetailSelect && innerDetailSelect.value) { chatParams.inner_detail = innerDetailSelect.value; }
     if (systemProfile && systemProfile.value) { chatParams.system_profile = systemProfile.value; }
+    if (systemOverride && systemOverride.value && systemOverride.value.trim()) {
+        chatParams.system_override = systemOverride.value.trim();
+    }
 
     const body = { model: modelName, prompt: text, parameters: chatParams, session_id: sessionId };
 
     try {
         if (!streaming) {
-            const r = await fetch(API_BASE_URL + '/generate', {
+            const r = await fetch('/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -232,7 +265,7 @@ async function sendChatMessage(streaming) {
             return;
         }
 
-        const r = await fetch(API_BASE_URL + '/generate/stream', {
+        const r = await fetch('/generate/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
@@ -350,7 +383,7 @@ if (resetSessionBtn) {
         const pane = createResponsePane(++requestId, false);
         pane.textContent = '...resetting session';
         try {
-            const r = await fetch(API_BASE_URL + '/session/reset', {
+            const r = await fetch('/session/reset', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId }),
@@ -378,7 +411,7 @@ if (showSessionBtn) {
         const pane = createResponsePane(++requestId, false);
         pane.textContent = '...loading session memory';
         try {
-            const r = await fetch(API_BASE_URL + '/session/get', {
+            const r = await fetch('/session/get', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId }),
@@ -435,6 +468,10 @@ form.addEventListener('submit', async (e) => {
     if (saveInnerToggle && saveInnerToggle.checked) { parameters.save_inner = true; }
     if (innerDetailSelect && innerDetailSelect.value) { parameters.inner_detail = innerDetailSelect.value; }
     if (systemProfile && systemProfile.value) { parameters.system_profile = systemProfile.value; }
+    if (systemOverride && systemOverride.value && systemOverride.value.trim()) {
+        parameters.system_override = systemOverride.value.trim();
+        console.warn('system_override を使用します。ローカル開発環境専用です。');
+    }
 
     console.log('Request parameters:', parameters);
 
@@ -461,7 +498,7 @@ form.addEventListener('submit', async (e) => {
     try {
         if (!stream) {
             pane.textContent = '...sending';
-            const r = await fetch(API_BASE_URL + '/generate', {
+            const r = await fetch('/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -497,7 +534,7 @@ form.addEventListener('submit', async (e) => {
         }
 
         pane.textContent = '';
-        const r = await fetch(API_BASE_URL + '/generate/stream', {
+        const r = await fetch('/generate/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),

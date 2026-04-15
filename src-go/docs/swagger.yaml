@@ -1,0 +1,192 @@
+basePath: /
+definitions:
+  main.GenerateRequestBody:
+    properties:
+      model:
+        description: 使用するモデル名
+        type: string
+      parameters:
+        additionalProperties: true
+        description: モデルに渡す追加パラメータ
+        type: object
+      prompt:
+        description: 入力プロンプト
+        type: string
+      session_id:
+        description: セッションID
+        type: string
+    type: object
+  main.ResponseEnvelope:
+    properties:
+      context:
+        description: コンテキスト情報
+        items:
+          type: integer
+        type: array
+      elapsed_ms:
+        description: 経過時間（ミリ秒）
+        type: number
+      error:
+        description: エラーメッセージ（オプション）
+        type: string
+      response:
+        description: モデルの応答
+        type: string
+      thinking:
+        description: モデルの思考過程（オプション）
+        type: string
+      tokens:
+        additionalProperties:
+          type: integer
+        description: トークン使用量
+        type: object
+    type: object
+host: localhost:8000
+info:
+  contact: {}
+  description: Live-Vision-Narrator の API ドキュメント
+  title: Live-Narrator API
+  version: "1.0"
+paths:
+  /generate:
+    post:
+      consumes:
+      - application/json
+      description: 非ストリーミングでテキストを生成します。
+      parameters:
+      - description: Generate request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.GenerateRequestBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ResponseEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Generate text (non-stream)
+      tags:
+      - generate
+  /generate/stream:
+    post:
+      consumes:
+      - application/json
+      description: POST ボディを受け取り NDJSON を逐次返します。各行は JSON チャンクです（最初の行は elapsed info）。
+      parameters:
+      - description: Generate stream request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.GenerateRequestBody'
+      produces:
+      - application/x-ndjson
+      responses:
+        "200":
+          description: NDJSON stream
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Generate stream (NDJSON)
+      tags:
+      - generate
+  /health:
+    get:
+      description: Check connectivity to Ollama
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /models:
+    get:
+      description: Return the list of available models
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List models
+      tags:
+      - models
+  /session/get:
+    post:
+      consumes:
+      - application/json
+      description: Retrieve stored context and history for a session
+      parameters:
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get session context and history
+      tags:
+      - session
+  /session/reset:
+    post:
+      consumes:
+      - application/json
+      description: Reset stored context and history for a session
+      parameters:
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Reset session context and history
+      tags:
+      - session
+swagger: "2.0"

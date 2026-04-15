@@ -22,7 +22,7 @@
             </div>
 
             <label for="model">Model</label>
-            <input id="model" name="model" value="live-narrator" placeholder="モデル名を入力（例: live-narrator）" style="width:60%;margin-top:6px"/>
+            <input id="model" name="model" value="live-narrator-e4b:latest" placeholder="モデル名を入力（例: live-narrator-e4b:latest）" style="width:60%;margin-top:6px"/>
 
             <label for="prompt">Prompt</label>
             <textarea id="prompt" name="prompt" rows="6" style="width:95%;margin-top:6px">こんにちは</textarea>
@@ -50,6 +50,9 @@
                 </select>
             </div>
 
+            <label for="systemOverride" style="margin-top:8px;display:block">System Override（ローカル開発のみ）</label>
+            <textarea id="systemOverride" name="systemOverride" rows="3" style="width:95%;margin-top:6px;font-size:0.9em" placeholder="生のシステムプロンプトを直接入力（system_profile より優先）。外部アクセス環境では非推奨です。"></textarea>
+
             <button id="sendBtn" type="button" class="big-btn">送信</button>
         </form>
 
@@ -65,7 +68,7 @@
         <h3>Response</h3>
         <div id="responses"></div>
 
-        <script src="/static/main.js"></script>
+        <script src="/static/main.js?v=1"></script>
         </div>
     </body>
 </html>

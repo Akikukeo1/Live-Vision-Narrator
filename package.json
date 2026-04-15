@@ -1,0 +1,50 @@
+{
+  "name": "live-vision-narrator",
+  "scripts": {
+    "check": "pnpm lint:check && pnpm fmt:check && pnpm test && pnpm build",
+    "fix": "pnpm lint:fix && pnpm fmt:fix",
+    "dev:go": "go -C src-go run main.go",
+    "run:go": "powershell -Command \"& './bin/narrator_engine.exe'\"",
+    "setup:tools": "go install github.com/golangci/golangci-lint/cmd/golangci-lint && go install mvdan.cc/gofumpt",
+
+    "// test //": "",
+      "test": "run-p test:go test:rust",
+      "test:go": "go -C src-go test ./...",
+      "test:rust": "cd src-rust && cargo test",
+
+    "// lint //": "",
+      "lint:check": "run-p lint:go:check lint:rust:check",
+      "lint:fix": "run-p lint:go:fix lint:rust:fix",
+      "// go linters //": "",
+        "lint:go:check": "golangci-lint run --config .golangci.yml ./src-go/...",
+        "lint:go:fix": "golangci-lint run --config .golangci.yml --fix ./src-go/...",
+      "// rust linters //": "",
+        "lint:rust:check": "cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings",
+        "lint:rust:fix": "cargo clippy --manifest-path src-rust/Cargo.toml --fix -Z unstable-options -- -D warnings || echo 'clippy --fix may require nightly Rust'",
+
+    "// fmt //": "",
+      "fmt:check": "run-p fmt:rust:check",
+      "fmt:fix": "run-p fmt:rust:fix",
+      "// rust formatters //": "",
+        "fmt:rust": "cargo fmt --manifest-path src-rust/Cargo.toml -- --check",
+        "fmt:rust:fix": "cargo fmt --manifest-path src-rust/Cargo.toml",
+        "fmt:rust:check": "cargo fmt --manifest-path src-rust/Cargo.toml -- --check",
+
+    "// build //": "",
+      "build": "run-p build:go build:rust",
+      "build:go": "go -C src-go build -o ../bin/narrator_engine.exe",
+      "build:rust": "cd src-rust && cargo build --release",
+
+    "// other //": "",
+      "get:go": "go -C src-go get ./...",
+      "tidy:go": "go -C src-go mod tidy",
+      "models:create": "ollama create my-narrator -f ./models/Modelfile",
+      "clean": "npx rimraf bin/* src-rust/target",
+
+      "// TODO: 実行できるようにする //": "",
+      "go:gen-tests": "gotests -all -w src-go/main.go"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}
