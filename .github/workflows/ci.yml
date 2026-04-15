@@ -107,8 +107,13 @@ jobs:
 
       - name: Install Go format tool
         if: matrix.language == 'go'
+        shell: bash
         run: |
-          go install mvdan.cc/gofumpt@latest
+          # install gofumpt into workspace-local GOBIN and add to PATH
+          GOBIN="${GITHUB_WORKSPACE}/.gopath/bin"
+          mkdir -p "$GOBIN"
+          GOBIN="$GOBIN" go install mvdan.cc/gofumpt@latest
+          echo "${GITHUB_WORKSPACE}/.gopath/bin" >> $GITHUB_PATH
 
       - name: Restore golangci-lint binary cache
         if: matrix.language == 'go' && matrix.task == 'lint'
