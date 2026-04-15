@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   runner:
-    name: ${{ matrix.language }} ${{ matrix.task == 'lint' && 'LintCheck' || matrix.task == 'fmt' && 'FmtCheck' || matrix.task == 'build' && 'BuildCheck' || 'Test' }} (${{ matrix.os == 'windows-latest' && 'Win' || 'Ubuntu' }})
+    name: ${{ matrix.language }} ${{ matrix.task == 'lint' && 'LintCheck' || matrix.task == 'fmt' && 'FmtCheck' || matrix.task == 'build' && 'BuildCheck' || 'Test' }} (${{ matrix.os == 'windows-latest' && 'Windows' || 'Ubuntu' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
