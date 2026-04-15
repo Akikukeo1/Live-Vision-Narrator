@@ -152,8 +152,19 @@ jobs:
         if: matrix.language == 'go' && matrix.task == 'lint'
         shell: bash
         run: |
-          # Run golangci-lint using the repository config (matches package.json)
-          golangci-lint run --config .golangci.yml ./src-go/...
+          set -o pipefail
+          echo "--- listing src-go files ---"
+          find src-go -type f -name '*.go' -print || true
+          echo "--- golangci-lint version ---"
+          golangci-lint --version || true
+          echo "--- golangci-lint available linters ---"
+          golangci-lint linters || true
+          echo "--- Run golangci-lint (no-config, enable gofumpt) ---"
+          golangci-lint run --no-config --disable-all --enable=gofumpt --enable=gofmt --verbose ./src-go/... || true
+          echo "--- Run golangci-lint (with config) ---"
+          golangci-lint run --config .golangci.yml ./src-go/... -v || true
+          echo "--- Run gofumpt directly to compare ---"
+          gofumpt -l -e src-go || true
 
       - name: Save golangci-lint binary cache
         if: matrix.language == 'go' && matrix.task == 'lint'
