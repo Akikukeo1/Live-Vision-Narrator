@@ -10,5 +10,9 @@ func fmtFail() {
 fmt.Println("This file intentionally fails gofumpt formatting check")
 }
 
+func fmtFail() {
+fmt.Println("This file intentionally fails gofumpt formatting check")
+}
+
 // 未使用エラーで CI が失敗しないように参照を保持します。
 var _ = fmtFail
