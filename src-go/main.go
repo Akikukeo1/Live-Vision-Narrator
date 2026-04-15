@@ -337,6 +337,12 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 		if think, ok := req.Parameters["think"].(bool); ok {
 			ollamaReq.Think = think
 		}
+
+		if systemOverride, ok := req.Parameters["system_override"].(string); ok && strings.TrimSpace(systemOverride) != "" {
+			ollamaReq.System = systemOverride
+		} else if systemProfile, ok := req.Parameters["system_profile"].(string); ok && strings.TrimSpace(systemProfile) != "" {
+			ollamaReq.System = systemProfile
+		}
 	}
 
 	// 保存されたセッションコンテキストがあれば取得
