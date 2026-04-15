@@ -152,14 +152,8 @@ jobs:
         if: matrix.language == 'go' && matrix.task == 'lint'
         shell: bash
         run: |
-          set -o pipefail
-          echo "--- golangci-lint version ---"
-          golangci-lint --version || true
-          echo "--- golangci-lint available linters ---"
-          golangci-lint linters || true
-          echo "--- golangci-lint running (force-enable gofumpt) ---"
-          # force-enable gofumpt to ensure it's active
-          golangci-lint run --out-format=colored-line-number --enable=gofumpt --config .golangci.yml ./src-go/...
+          # Use the same command as package.json to keep CI consistent with local scripts
+          golangci-lint run --config .golangci.yml ./src-go/...
 
       - name: Save golangci-lint binary cache
         if: matrix.language == 'go' && matrix.task == 'lint'
