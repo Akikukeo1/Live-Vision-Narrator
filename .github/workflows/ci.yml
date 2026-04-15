@@ -105,6 +105,16 @@ jobs:
           restore-keys: |
             go-cache-${{ runner.os }}-
 
+      - name: Download Go modules
+        if: matrix.language == 'go'
+        shell: bash
+        run: |
+          echo "Downloading Go modules for src-go"
+          cd src-go
+          # show go env for debugging
+          go env
+          go mod download
+
       - name: Install Go format tool
         if: matrix.language == 'go'
         shell: bash
@@ -154,17 +164,10 @@ jobs:
         run: |
           set -o pipefail
           echo "--- listing src-go files ---"
-          find src-go -type f -name '*.go' -print || true
-          echo "--- golangci-lint version ---"
-          golangci-lint --version || true
-          echo "--- golangci-lint available linters ---"
-          golangci-lint linters || true
-          echo "--- Run golangci-lint (no-config, enable gofumpt) ---"
-          golangci-lint run --no-config --disable-all --enable=gofumpt --enable=gofmt --verbose ./src-go/... || true
+          find src-go -type f -name '*.go' -print
           echo "--- Run golangci-lint (with config) ---"
-          golangci-lint run --config .golangci.yml ./src-go/... -v || true
-          echo "--- Run gofumpt directly to compare ---"
-          gofumpt -l -e src-go || true
+          # fail the job on any linter issues
+          golangci-lint run --config .golangci.yml ./src-go/...
 
       - name: Save golangci-lint binary cache
         if: matrix.language == 'go' && matrix.task == 'lint'
