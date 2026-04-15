@@ -434,9 +434,48 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// チャンクを送信
-			if data, err := json.Marshal(genResp); err == nil {
-				if _, err := w.Write(append(data, '\n')); err != nil {
-					log.Printf("failed to write stream chunk: %v", err)
+			// ストリーミングでは UI が `tokens` フィールドを参照するため、
+			// 完了チャンク（genResp.Done==true）で `usage` を `tokens` 形式に変換して付与します。
+			// 互換性のため `usage` 自体は残しますが、UI は `tokens` を優先できるようになります。
+			if genResp.Done && genResp.Usage != nil {
+				// ジェネリックなマップに変換してから `tokens` を注入する
+				var chunkMap map[string]interface{}
+				if b, err := json.Marshal(genResp); err == nil {
+					if err := json.Unmarshal(b, &chunkMap); err == nil {
+						chunkMap["tokens"] = map[string]int{
+							"prompt_tokens":     genResp.Usage.PromptTokens,
+							"completion_tokens": genResp.Usage.CompletionTokens,
+							"total_tokens":      genResp.Usage.TotalTokens,
+						}
+						if data, err := json.Marshal(chunkMap); err == nil {
+							if _, err := w.Write(append(data, '\n')); err != nil {
+								log.Printf("failed to write stream chunk: %v", err)
+							}
+						} else {
+							log.Printf("failed to marshal chunkMap: %v", err)
+						}
+					} else {
+						// マップ変換に失敗したら元の構造体をそのまま送信
+						if data, err := json.Marshal(genResp); err == nil {
+							if _, err := w.Write(append(data, '\n')); err != nil {
+								log.Printf("failed to write stream chunk: %v", err)
+							}
+						}
+					}
+				} else {
+					// マーシャル失敗時は元の構造体を送信
+					if data, err := json.Marshal(genResp); err == nil {
+						if _, err := w.Write(append(data, '\n')); err != nil {
+							log.Printf("failed to write stream chunk: %v", err)
+						}
+					}
+				}
+			} else {
+				// 通常のチャンクはそのまま送信
+				if data, err := json.Marshal(genResp); err == nil {
+					if _, err := w.Write(append(data, '\n')); err != nil {
+						log.Printf("failed to write stream chunk: %v", err)
+					}
 				}
 			}
 
