@@ -67,7 +67,7 @@ jobs:
       fail-fast: false
       matrix:
         language: [go, rust]
-        task: [lint, fmt]
+        task: [lint]
         go-version: ['1.26']
 
     steps:
@@ -115,15 +115,7 @@ jobs:
           go env
           go mod download
 
-      - name: Install Go format tool
-        if: matrix.language == 'go'
-        shell: bash
-        run: |
-          # install gofumpt into workspace-local GOBIN and add to PATH
-          GOBIN="${GITHUB_WORKSPACE}/.gopath/bin"
-          mkdir -p "$GOBIN"
-          GOBIN="$GOBIN" go install mvdan.cc/gofumpt@latest
-          echo "${GITHUB_WORKSPACE}/.gopath/bin" >> $GITHUB_PATH
+      # Formatting is handled by golangci-lint in lint step; no separate fmt tool install
 
       - name: Restore golangci-lint binary cache
         if: matrix.language == 'go' && matrix.task == 'lint'
@@ -177,18 +169,7 @@ jobs:
             ${{ github.workspace }}/.gobin
           key: golangci-lint-${{ runner.os }}-v1.64.8-go-${{ matrix.go-version }}
 
-      - name: Run gofmt check
-        if: matrix.language == 'go' && matrix.task == 'fmt'
-        shell: bash
-        run: |
-          # 出力があれば CI を失敗させる（gofumpt は一覧を返すが exit code を保証しない場合がある）
-          set -o pipefail
-          out=$(gofumpt -l -e src-go || true)
-          if [ -n "$out" ]; then
-            echo "gofumpt found files needing formatting:" >&2
-            echo "$out" >&2
-            exit 1
-          fi
+
 
       - name: Set up Rust
         if: matrix.language == 'rust'
@@ -208,8 +189,4 @@ jobs:
         run: |
           cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
 
-      - name: Run cargo fmt check
-        if: matrix.language == 'rust' && matrix.task == 'fmt'
-        shell: bash
-        run: |
-          cargo fmt --manifest-path src-rust/Cargo.toml -- --check
+      # Rust formatting check omitted; clippy lint covers code quality

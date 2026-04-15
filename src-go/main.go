@@ -9,16 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"live-narrator/api"
+	"live-narrator/config"
+	"live-narrator/processor"
+	"live-narrator/util"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"live-narrator/api"
-	"live-narrator/config"
-	"live-narrator/processor"
-	"live-narrator/util"
 
 	_ "live-narrator/docs"
 
