@@ -9,16 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"live-narrator/api"
+	"live-narrator/config"
+	"live-narrator/processor"
+	"live-narrator/util"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"live-narrator/api"
-	"live-narrator/config"
-	"live-narrator/processor"
-	"live-narrator/util"
 
 	_ "live-narrator/docs"
 
@@ -140,16 +139,20 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
 			"error": err.Error(),
-		})
+		}); err != nil {
+			log.Printf("failed to encode health error response: %v", err)
+		}
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok": true,
-	})
+	}); err != nil {
+		log.Printf("failed to encode health response: %v", err)
+	}
 }
 
 // handleGenerate は非ストリーミングのテキスト生成を処理します
@@ -177,7 +180,9 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); err != nil {
+			log.Printf("failed to encode request decode error response: %v", err)
+		}
 		return
 	}
 	profiler.Mark("req_decoded")
@@ -230,7 +235,9 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); err != nil {
+			log.Printf("failed to encode internal error response: %v", err)
+		}
 		return
 	}
 
@@ -285,7 +292,9 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	// TODO: 本番ではプロファイルログの出力レベルや形式を設定可能にすることを検討してください
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(envelope)
+	if err := json.NewEncoder(w).Encode(envelope); err != nil {
+		log.Printf("failed to encode response envelope: %v", err)
+	}
 }
 
 // handleGenerateStream はストリーミング生成を処理します
@@ -312,7 +321,9 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); err != nil {
+			log.Printf("failed to encode stream request decode error response: %v", err)
+		}
 		return
 	}
 	profiler.Mark("req_decoded")
@@ -348,7 +359,9 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); err != nil {
+			log.Printf("failed to encode stream internal error response: %v", err)
+		}
 		return
 	}
 	defer streamCancel()
@@ -363,7 +376,9 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 		ElapsedMs: profiler.GetDelta("start", "ollama_stream_started"),
 	}
 	if data, err := json.Marshal(elapsedHeader); err == nil {
-		w.Write(append(data, '\n'))
+		if _, err := w.Write(append(data, '\n')); err != nil {
+			log.Printf("failed to write elapsed header: %v", err)
+		}
 	}
 
 	// Ollama からのストリーム行を逐次処理
@@ -410,7 +425,9 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 
 			// チャンクを送信
 			if data, err := json.Marshal(genResp); err == nil {
-				w.Write(append(data, '\n'))
+				if _, err := w.Write(append(data, '\n')); err != nil {
+					log.Printf("failed to write stream chunk: %v", err)
+				}
 			}
 
 			if flusher, ok := w.(http.Flusher); ok {
@@ -460,9 +477,11 @@ streamEnd:
 // @Router /models [get]
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"models": []string{},
-	})
+	}); err != nil {
+		log.Printf("failed to encode models response: %v", err)
+	}
 }
 
 // handleSessionReset はセッション状態をリセットします
@@ -484,16 +503,21 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		SessionID string `json:"session_id"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
 
 	s.sessionContexts.Delete(req.SessionID)
 	s.sessionHistory.Delete(req.SessionID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":         true,
 		"session_id": req.SessionID,
-	})
+	}); err != nil {
+		log.Printf("failed to encode session reset response: %v", err)
+	}
 }
 
 // handleSessionGet はセッションデータを取得します
@@ -532,7 +556,7 @@ func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":             true,
 		"session_id":     req.SessionID,
 		"has_context":    context != nil,
@@ -540,5 +564,7 @@ func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 		"history_length": len(history),
 		"history":        history,
 		"context":        context,
-	})
+	}); err != nil {
+		log.Printf("failed to encode session get response: %v", err)
+	}
 }

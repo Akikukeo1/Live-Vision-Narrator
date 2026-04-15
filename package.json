@@ -2,9 +2,10 @@
   "name": "live-vision-narrator",
   "scripts": {
     "check": "pnpm lint:check && pnpm fmt:check && pnpm test && pnpm build",
-    "fmt": "pnpm lint:fix && pnpm fmt:fix",
+    "fix": "pnpm lint:fix && pnpm fmt:fix",
     "dev:go": "go -C src-go run main.go",
     "run:go": "powershell -Command \"& './bin/narrator_engine.exe'\"",
+    "setup:tools": "go install github.com/golangci/golangci-lint/cmd/golangci-lint && go install mvdan.cc/gofumpt",
 
     "// test //": "",
       "test": "run-p test:go test:rust",
@@ -12,27 +13,20 @@
       "test:rust": "cd src-rust && cargo test",
 
     "// lint //": "",
-      "lint:check": "run-p lint:go:check lint:go:check:revive lint:go:check:staticcheck lint:rust:check",
+      "lint:check": "run-p lint:go:check lint:rust:check",
       "lint:fix": "run-p lint:go:fix lint:rust:fix",
-      "lint:go:check:revive": "revive -config revive.toml -formatter stylish ./src-go/...",
-      "lint:go:check:staticcheck": "staticcheck ./src-go/...",
-      "lint:go": "go -C src-go vet ./...",
-        "lint:go:check": "go -C src-go vet ./...",
-        "lint:go:fix": "echo 'No automatic fix for go vet; run gofmt or goimports as needed'",
-      "lint:rust": "cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings",
+      "// go linters //": "",
+        "lint:go:check": "golangci-lint run --config .golangci.yml ./src-go/...",
+        "lint:go:fix": "golangci-lint run --config .golangci.yml --fix ./src-go/...",
+      "// rust linters //": "",
         "lint:rust:check": "cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings",
         "lint:rust:fix": "cargo clippy --manifest-path src-rust/Cargo.toml --fix -Z unstable-options -- -D warnings || echo 'clippy --fix may require nightly Rust'",
 
     "// fmt //": "",
-      "fmt:check": "run-p fmt:go:check fmt:rust:check",
-      "fmt:fix": "run-p fmt:go:fix fmt:rust:fix",
-      "fmt:go": "gofumpt -w src-go",
-        "fmt:go:check": "gofumpt -l -e src-go",
-        "fmt:go:fix": "gofumpt -w src-go",
-      "fmt:go:old": "go -C src-go fmt ./...",
-        "fmt:go:check:old": "gofmt -l -e src-go || true",
-        "fmt:go:fix:old": "gofmt -w src-go",
-      "fmt:rust": "cargo fmt --manifest-path src-rust/Cargo.toml -- --check",
+      "fmt:check": "run-p fmt:rust:check",
+      "fmt:fix": "run-p fmt:rust:fix",
+      "// rust formatters //": "",
+        "fmt:rust": "cargo fmt --manifest-path src-rust/Cargo.toml -- --check",
         "fmt:rust:fix": "cargo fmt --manifest-path src-rust/Cargo.toml",
         "fmt:rust:check": "cargo fmt --manifest-path src-rust/Cargo.toml -- --check",
 
@@ -45,7 +39,10 @@
       "get:go": "go -C src-go get ./...",
       "tidy:go": "go -C src-go mod tidy",
       "models:create": "ollama create my-narrator -f ./models/Modelfile",
-      "clean": "npx rimraf bin/* src-rust/target"
+      "clean": "npx rimraf bin/* src-rust/target",
+
+      "// TODO: 実行できるようにする //": "",
+      "go:gen-tests": "gotests -all -w src-go/main.go"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"
