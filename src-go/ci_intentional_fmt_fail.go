@@ -6,4 +6,8 @@ package main
 // TODO: CIテストが完了したらこのファイルを削除してください。
 import "fmt"
 
-func fmtFail() { fmt.Println("This file intentionally fails gofumpt formatting check") }
+func          fmtFail(
+
+) {
+	fmt.Println( "This file intentionally fails gofumpt formatting check " )
+}
