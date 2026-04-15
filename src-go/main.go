@@ -208,11 +208,10 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			systemProfile = strings.TrimSpace(value)
 		}
 
-		switch {
-		case systemOverride != "":
+		if systemOverride != "" {
 			ollamaReq.System = systemOverride
-		case systemProfile != "":
-			ollamaReq.System = systemProfile
+		} else if systemProfile != "" {
+			log.Printf("ignoring system_profile %q because profiles must be resolved to prompt text before setting GenerateRequest.System", systemProfile)
 		}
 	}
 
