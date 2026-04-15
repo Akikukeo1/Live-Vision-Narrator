@@ -7,7 +7,9 @@ package main
 import "fmt"
 
 // 故意に一行で記述して gofumpt が差分として検出するようにしています。
-func fmtFail() { fmt.Println("This file intentionally fails gofumpt formatting check") }
+func fmtFail() {
+	fmt.Println("This file intentionally fails gofumpt formatting check")
+}
 
 // 未使用エラーで CI が失敗しないように参照を保持します。
 var _ = fmtFail
