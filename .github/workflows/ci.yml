@@ -93,11 +93,23 @@ jobs:
           restore-keys: |
             go-cache-${{ runner.os }}-
 
-      - name: Install Go lint/format tools
+      - name: Install Go format tool
         if: matrix.language == 'go'
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           go install mvdan.cc/gofumpt@latest
+
+      - name: Run golangci-lint (action)
+        if: ${{ matrix.language == 'go' && matrix.task == 'lint' }}
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: v1.64.8
+          args: --config .golangci.yml run ./src-go/...
+
+      - name: Run gofmt check
+        if: ${{ matrix.language == 'go' && matrix.task == 'fmt' }}
+        shell: bash
+        run: |
+          gofumpt -l -e src-go
 
       - name: Set up Rust
         if: matrix.language == 'rust'
@@ -111,23 +123,14 @@ jobs:
           prefix-key: "v3-rust-${{ runner.os }}"
           cache-targets: true
 
-      - name: Run Lint/Format Check
+      - name: Run cargo clippy
+        if: ${{ matrix.language == 'rust' && matrix.task == 'lint' }}
         shell: bash
         run: |
-          if [ "${{ matrix.language }}" == "go" ]; then
-            if [ "${{ matrix.task }}" == "lint" ]; then
-              echo "--- Lint check (Go) ---"
-              golangci-lint run --config .golangci.yml ./src-go/...
-            else
-              echo "--- Format check (Go) ---"
-              gofumpt -l -e src-go
-            fi
-          else
-            if [ "${{ matrix.task }}" == "lint" ]; then
-              echo "--- Lint check (Rust) ---"
-              cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
-            else
-              echo "--- Format check (Rust) ---"
-              cargo fmt --manifest-path src-rust/Cargo.toml -- --check
-            fi
-          fi
+          cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
+
+      - name: Run cargo fmt check
+        if: ${{ matrix.language == 'rust' && matrix.task == 'fmt' }}
+        shell: bash
+        run: |
+          cargo fmt --manifest-path src-rust/Cargo.toml -- --check
