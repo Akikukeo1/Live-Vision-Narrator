@@ -166,7 +166,14 @@ jobs:
         if: matrix.language == 'go' && matrix.task == 'fmt'
         shell: bash
         run: |
-          gofumpt -l -e src-go
+          # 出力があれば CI を失敗させる（gofumpt は一覧を返すが exit code を保証しない場合がある）
+          set -o pipefail
+          out=$(gofumpt -l -e src-go || true)
+          if [ -n "$out" ]; then
+            echo "gofumpt found files needing formatting:" >&2
+            echo "$out" >&2
+            exit 1
+          fi
 
       - name: Set up Rust
         if: matrix.language == 'rust'
