@@ -102,18 +102,35 @@ jobs:
         if: matrix.language == 'go' && matrix.task == 'lint'
         uses: actions/cache@v4
         with:
-          path: /home/runner/golangci-lint-1.64.8-linux-amd64
+          path: |
+            ${{ github.workspace }}/.gobin
+            $HOME/go/bin/golangci-lint
           key: golangci-lint-${{ runner.os }}-v1.64.8-go-${{ matrix.go-version }}
           restore-keys: |
             golangci-lint-${{ runner.os }}-
 
-      - name: Run golangci-lint (action)
+      - name: Install golangci-lint via go install
         if: matrix.language == 'go' && matrix.task == 'lint'
-        uses: golangci/golangci-lint-action@v4
+        shell: bash
+        run: |
+          if [ ! -x "$HOME/go/bin/golangci-lint" ]; then
+            go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          fi
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Run golangci-lint
+        if: matrix.language == 'go' && matrix.task == 'lint'
+        shell: bash
+        run: |
+          golangci-lint run --out-format=colored-line-number --config .golangci.yml ./src-go/...
+
+      - name: Save golangci-lint binary cache
+        if: matrix.language == 'go' && matrix.task == 'lint'
+        uses: actions/cache@v4
         with:
-          version: v1.64.8
-          args: --config .golangci.yml run ./src-go/...
-          install-mode: source
+          path: |
+            $HOME/go/bin/golangci-lint
+          key: golangci-lint-${{ runner.os }}-v1.64.8-go-${{ matrix.go-version }}
 
       - name: Run gofmt check
         if: matrix.language == 'go' && matrix.task == 'fmt'
