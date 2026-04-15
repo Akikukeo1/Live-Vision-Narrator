@@ -1,5 +1,3 @@
 fn main() {
-    println!("Hello, world!");　　　　　　
+    println!("Hello, world!");
 }
-この文章は、Lintのテストのために意図的にフォーマットが崩されているコードです。
-このコードは、CIのテストが完了したら削除してください。
