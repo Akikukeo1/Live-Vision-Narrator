@@ -40,6 +40,11 @@ type HistoryEntry struct {
 	Text string `json:"text"` // 発言内容
 }
 
+// SessionRequest はセッション操作のリクエストボディです
+type SessionRequest struct {
+	SessionID string `json:"session_id"` // セッションID
+}
+
 // GenerateRequestBody は Python API リクエスト形式に一致します
 type GenerateRequestBody struct {
 	Model      string                 `json:"model"`      // 使用するモデル名
@@ -429,9 +434,48 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// チャンクを送信
-			if data, err := json.Marshal(genResp); err == nil {
-				if _, err := w.Write(append(data, '\n')); err != nil {
-					log.Printf("failed to write stream chunk: %v", err)
+			// ストリーミングでは UI が `tokens` フィールドを参照するため、
+			// 完了チャンク（genResp.Done==true）で `usage` を `tokens` 形式に変換して付与します。
+			// 互換性のため `usage` 自体は残しますが、UI は `tokens` を優先できるようになります。
+			if genResp.Done && genResp.Usage != nil {
+				// ジェネリックなマップに変換してから `tokens` を注入する
+				var chunkMap map[string]interface{}
+				if b, err := json.Marshal(genResp); err == nil {
+					if err := json.Unmarshal(b, &chunkMap); err == nil {
+						chunkMap["tokens"] = map[string]int{
+							"prompt_tokens":     genResp.Usage.PromptTokens,
+							"completion_tokens": genResp.Usage.CompletionTokens,
+							"total_tokens":      genResp.Usage.TotalTokens,
+						}
+						if data, err := json.Marshal(chunkMap); err == nil {
+							if _, err := w.Write(append(data, '\n')); err != nil {
+								log.Printf("failed to write stream chunk: %v", err)
+							}
+						} else {
+							log.Printf("failed to marshal chunkMap: %v", err)
+						}
+					} else {
+						// マップ変換に失敗したら元の構造体をそのまま送信
+						if data, err := json.Marshal(genResp); err == nil {
+							if _, err := w.Write(append(data, '\n')); err != nil {
+								log.Printf("failed to write stream chunk: %v", err)
+							}
+						}
+					}
+				} else {
+					// マーシャル失敗時は元の構造体を送信
+					if data, err := json.Marshal(genResp); err == nil {
+						if _, err := w.Write(append(data, '\n')); err != nil {
+							log.Printf("failed to write stream chunk: %v", err)
+						}
+					}
+				}
+			} else {
+				// 通常のチャンクはそのまま送信
+				if data, err := json.Marshal(genResp); err == nil {
+					if _, err := w.Write(append(data, '\n')); err != nil {
+						log.Printf("failed to write stream chunk: %v", err)
+					}
 				}
 			}
 
@@ -496,7 +540,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 // @Tags session
 // @Accept json
 // @Produce json
-// @Param body body object true "{\"session_id\": \"...\"}"
+// @Param body body SessionRequest true "Reset session request body"
 // @Success 200 {object} map[string]interface{}
 // @Router /session/reset [post]
 func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
@@ -532,7 +576,7 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 // @Tags session
 // @Accept json
 // @Produce json
-// @Param body body object true "{\"session_id\": \"...\"}"
+// @Param body body SessionRequest true "Get session request body"
 // @Success 200 {object} map[string]interface{}
 // @Router /session/get [post]
 func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {

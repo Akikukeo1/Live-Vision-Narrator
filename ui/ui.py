@@ -29,6 +29,15 @@ repo_root = Path(__file__).resolve().parent.parent
 models_dir = repo_root / "models"
 
 # 同じディレクトリ内の HTML/CSS/JS を静的ファイルとして配信
+# FIXME: 確認する！！
+# REVIEWFORUSER: 注意 — 現在 `ui_dir`（この `ui.py` 自身が置かれているディレクトリ）を
+# そのまま静的配信ディレクトリに指定しています。これだと `/static/ui.py` のように
+# サーバ側コードが外部から参照可能となり、意図しないコード露出を招く恐れがあります。
+# 対策例:
+# - 静的ファイル専用のサブディレクトリを作成してそこを配信する（例: `ui_dir / "static"`）
+# - アプリケーションコードを別ディレクトリへ移動する
+# - 同一ディレクトリを使い続ける場合は、配信するファイルを拡張子等でフィルタする独自ハンドラを実装する
+# TODO: セキュリティ改善のため、静的配信ディレクトリを分離する PR を作成してください。
 ui_dir = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(ui_dir)), name="static")
 
