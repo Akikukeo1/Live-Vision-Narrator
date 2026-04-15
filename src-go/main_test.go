@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"live-narrator/api"
-	"live-narrator/config"
-	"live-narrator/processor"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"live-narrator/api"
+	"live-narrator/config"
+	"live-narrator/processor"
 )
 
 // mockOllama はテスト用に api.OllamaAPI を実装します
