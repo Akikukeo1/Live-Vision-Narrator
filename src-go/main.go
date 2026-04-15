@@ -40,6 +40,11 @@ type HistoryEntry struct {
 	Text string `json:"text"` // 発言内容
 }
 
+// SessionRequest はセッション操作のリクエストボディです
+type SessionRequest struct {
+	SessionID string `json:"session_id"` // セッションID
+}
+
 // GenerateRequestBody は Python API リクエスト形式に一致します
 type GenerateRequestBody struct {
 	Model      string                 `json:"model"`      // 使用するモデル名
@@ -496,7 +501,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 // @Tags session
 // @Accept json
 // @Produce json
-// @Param body body object true "{\"session_id\": \"...\"}"
+// @Param body body SessionRequest true "Reset session request body"
 // @Success 200 {object} map[string]interface{}
 // @Router /session/reset [post]
 func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
@@ -532,7 +537,7 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 // @Tags session
 // @Accept json
 // @Produce json
-// @Param body body object true "{\"session_id\": \"...\"}"
+// @Param body body SessionRequest true "Get session request body"
 // @Success 200 {object} map[string]interface{}
 // @Router /session/get [post]
 func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
