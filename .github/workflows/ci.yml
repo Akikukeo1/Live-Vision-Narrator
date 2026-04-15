@@ -82,22 +82,25 @@ jobs:
           cache: true
           cache-dependency-path: "**/go.sum"
 
-      - name: Clean Go cache dirs to avoid tar overwrite errors
+      - name: Use workspace-local GOPATH and GOMODCACHE
         if: matrix.language == 'go'
         shell: bash
         run: |
-          echo "Cleaning potential conflicting Go cache directories"
-          rm -rf "$HOME/go/pkg/mod" || true
-          rm -rf "$HOME/.cache/go-build" || true
-          mkdir -p "$HOME/go/pkg/mod" "$HOME/.cache/go-build"
+          echo "Setting workspace-local GOPATH and GOMODCACHE"
+          export LOCAL_GOPATH="${GITHUB_WORKSPACE}/.gopath"
+          export LOCAL_GOMODCACHE="${GITHUB_WORKSPACE}/.gomodcache"
+          mkdir -p "$LOCAL_GOPATH" "$LOCAL_GOMODCACHE" "$HOME/.cache/go-build"
+          echo "GOPATH=$LOCAL_GOPATH" >> $GITHUB_ENV
+          echo "GOMODCACHE=$LOCAL_GOMODCACHE" >> $GITHUB_ENV
+          echo "GOBIN=$LOCAL_GOPATH/bin" >> $GITHUB_ENV
 
-      - name: Cache Go build and module cache
+      - name: Cache Go build and module cache (workspace-local)
         if: matrix.language == 'go'
         uses: actions/cache@v4
         with:
           path: |
+            ${{ github.workspace }}/.gomodcache
             ~/.cache/go-build
-            ~/go/pkg/mod
           key: go-cache-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             go-cache-${{ runner.os }}-
@@ -121,18 +124,24 @@ jobs:
       - name: Install golangci-lint via go install
         if: matrix.language == 'go' && matrix.task == 'lint'
         shell: bash
+        env:
+          GOPATH: ${{ env.GOPATH }}
+          GOMODCACHE: ${{ env.GOMODCACHE }}
         run: |
-          if [ ! -x "$HOME/go/bin/golangci-lint" ]; then
-            go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          # install into workspace-local GOBIN
+          GOBIN="${GITHUB_WORKSPACE}/.gopath/bin"
+          mkdir -p "$GOBIN"
+          if [ ! -x "$GOBIN/golangci-lint" ]; then
+            GOBIN="$GOBIN" go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
           fi
-          echo "$HOME/go/bin" >> $GITHUB_PATH
+          echo "${GITHUB_WORKSPACE}/.gopath/bin" >> $GITHUB_PATH
 
-      - name: Copy golangci-lint into workspace for reliable caching
+      - name: Copy golangci-lint into workspace .gobin for caching
         if: matrix.language == 'go' && matrix.task == 'lint'
         shell: bash
         run: |
           mkdir -p "$GITHUB_WORKSPACE/.gobin"
-          cp -f "$HOME/go/bin/golangci-lint" "$GITHUB_WORKSPACE/.gobin/" || true
+          cp -f "${GITHUB_WORKSPACE}/.gopath/bin/golangci-lint" "$GITHUB_WORKSPACE/.gobin/" || true
 
       - name: Run golangci-lint
         if: matrix.language == 'go' && matrix.task == 'lint'
