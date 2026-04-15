@@ -82,6 +82,15 @@ jobs:
           cache: true
           cache-dependency-path: "**/go.sum"
 
+      - name: Clean Go cache dirs to avoid tar overwrite errors
+        if: matrix.language == 'go'
+        shell: bash
+        run: |
+          echo "Cleaning potential conflicting Go cache directories"
+          rm -rf "$HOME/go/pkg/mod" || true
+          rm -rf "$HOME/.cache/go-build" || true
+          mkdir -p "$HOME/go/pkg/mod" "$HOME/.cache/go-build"
+
       - name: Cache Go build and module cache
         if: matrix.language == 'go'
         uses: actions/cache@v4
@@ -118,6 +127,13 @@ jobs:
           fi
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
+      - name: Copy golangci-lint into workspace for reliable caching
+        if: matrix.language == 'go' && matrix.task == 'lint'
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.gobin"
+          cp -f "$HOME/go/bin/golangci-lint" "$GITHUB_WORKSPACE/.gobin/" || true
+
       - name: Run golangci-lint
         if: matrix.language == 'go' && matrix.task == 'lint'
         shell: bash
@@ -129,7 +145,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/go/bin/golangci-lint
+            ${{ github.workspace }}/.gobin
           key: golangci-lint-${{ runner.os }}-v1.64.8-go-${{ matrix.go-version }}
 
       - name: Run gofmt check
