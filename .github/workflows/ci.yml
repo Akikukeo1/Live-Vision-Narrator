@@ -99,16 +99,24 @@ jobs:
           go install mvdan.cc/gofumpt@latest
 
       - name: Restore golangci-lint binary cache
-        if: ${{ matrix.language == 'go' && matrix.task == 'lint' }}
+        if: matrix.language == 'go' && matrix.task == 'lint'
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/golangci-lint-1.64.8-linux-amd64
+          key: golangci-lint-${{ runner.os }}-v1.64.8-go-${{ matrix.go-version }}
+          restore-keys: |
+            golangci-lint-${{ runner.os }}-
+
       - name: Run golangci-lint (action)
-        if: ${{ matrix.language == 'go' && matrix.task == 'lint' }}
+        if: matrix.language == 'go' && matrix.task == 'lint'
         uses: golangci/golangci-lint-action@v4
         with:
           version: v1.64.8
           args: --config .golangci.yml run ./src-go/...
+          install-mode: source
 
       - name: Run gofmt check
-        if: ${{ matrix.language == 'go' && matrix.task == 'fmt' }}
+        if: matrix.language == 'go' && matrix.task == 'fmt'
         shell: bash
         run: |
           gofumpt -l -e src-go
@@ -126,13 +134,13 @@ jobs:
           cache-targets: true
 
       - name: Run cargo clippy
-        if: ${{ matrix.language == 'rust' && matrix.task == 'lint' }}
+        if: matrix.language == 'rust' && matrix.task == 'lint'
         shell: bash
         run: |
           cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
 
       - name: Run cargo fmt check
-        if: ${{ matrix.language == 'rust' && matrix.task == 'fmt' }}
+        if: matrix.language == 'rust' && matrix.task == 'fmt'
         shell: bash
         run: |
           cargo fmt --manifest-path src-rust/Cargo.toml -- --check
