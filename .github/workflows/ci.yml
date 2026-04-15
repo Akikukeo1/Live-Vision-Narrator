@@ -98,6 +98,8 @@ jobs:
         run: |
           go install mvdan.cc/gofumpt@latest
 
+      - name: Restore golangci-lint binary cache
+        if: ${{ matrix.language == 'go' && matrix.task == 'lint' }}
       - name: Run golangci-lint (action)
         if: ${{ matrix.language == 'go' && matrix.task == 'lint' }}
         uses: golangci/golangci-lint-action@v4
