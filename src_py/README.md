@@ -6,6 +6,8 @@
 
 ## 移行状況
 
+abliterator/: 移行なし
+
 client_test.py: 現在、現役のデバッガ用のテストコードです。これがCIで実行される事はありません。
 config.py: 完了 → config.go に移行
 main.py: 完了 → main.go, text_processor.go, ollama_client.go に移行
