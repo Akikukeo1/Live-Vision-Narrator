@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Akikukeo1 (Keisuke Ishii)", email = "256033008+Akikukeo1@users.noreply.github.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "heretic-llm>=1.2.0",
     "huggingface-hub>=0.36.2",
