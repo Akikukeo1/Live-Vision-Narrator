@@ -1,6 +1,8 @@
 # src_py
 
-現在、このAPIはPythonからGoへ移行しています。Python製のAPIは廃止されます。src-goが新しいコードベースで、src_pyは古いコードベースです。src_pyは移行期間中に参照用として残されますが、新しい機能はsrc-goに追加されます。src_pyのコードは将来的に削除される予定です。
+現在、このAPIはPythonからGoへ移行しています。Python製のAPIは廃止されます。
+
+ただし、abliterator/では、ライブラリなどの関係でPythonコードも必要なため、src_pyの一部は当面維持されます。特に、UIサーバ（ui.py）はPythonで運用を続ける予定です。
 
 ## 移行状況
 
