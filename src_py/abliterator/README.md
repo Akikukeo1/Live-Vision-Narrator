@@ -1,5 +1,7 @@
 # abliterator
 
+./Hereticを使用する方向へ変更。
+
 Abliteratorは、特定のLLMモデルから「拒否（reject）に関するベクトル」を検出・削除し、モデルの応答や embeddings の振る舞いを調整するためのユーティリティです。
 
 ディスクに100GB以上の空きを用意していないと、正常に動作しない可能性があります。特に、モデルの拒否ベクトルを抽出する際に大量のデータが生成されるためです。
@@ -36,7 +38,7 @@ if hasattr(layer, 'linear_attn'):
         try_add("attn.o_proj", layer.linear_attn.o_proj)
     else:
         print("DEBUG: No output projection found in linear_attn.")
-        
+
 elif hasattr(layer, 'self_attn'):
     # 標準的な Llama / Qwen (旧) などの構造
     if hasattr(layer.self_attn, 'o_proj'):
