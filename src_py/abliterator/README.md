@@ -11,29 +11,75 @@ Abliteratorは、特定のLLMモデルから「拒否（reject）に関するベ
 
 ### 環境をセットアップ
 
-uv sync 実行後、Transformerを更新するため
+uv sync 実行後、更新するため
+uv pip install -U peft transformers accelerate
 uv pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/peft.git
 で、手動インストールしてください。
 
-src_py\abliterator\.venv\Lib\site-packages\heretic\model.py
-345 行目付近を探す:
-get_layer_modules という関数の中に以下の行があるはずです。
-
 ### ライブラリの書き換え
+
+src_py\abliterator\.venv\Lib\site-packages\heretic\model.py
+345 行目付近 get_layer_modules 関数
 
 ```python
 try_add("attn.o_proj", layer.self_attn.o_proj)  # ty:ignore[possibly-missing-attribute]
 ```
-以下のように書き換えて保存:
+```python
+# =================改造=================
+# Qwen3.5 (GatedDeltaNet) や Llama系など、多様なアーキテクチャに対応
+if hasattr(layer, 'linear_attn'):
+    # linear_attn 内のプロジェクション層を探索
+    if hasattr(layer.linear_attn, 'out_proj'):
+        try_add("attn.o_proj", layer.linear_attn.out_proj)
+    elif hasattr(layer.linear_attn, 'o_proj'):
+        try_add("attn.o_proj", layer.linear_attn.o_proj)
+    else:
+        print("DEBUG: No output projection found in linear_attn.")
+        
+elif hasattr(layer, 'self_attn'):
+    # 標準的な Llama / Qwen (旧) などの構造
+    if hasattr(layer.self_attn, 'o_proj'):
+        try_add("attn.o_proj", layer.self_attn.o_proj)
+    elif hasattr(layer.self_attn, 'out_proj'):
+        try_add("attn.o_proj", layer.self_attn.out_proj)
+
+else:
+    print("DEBUG: No attention module recognized in this layer.")
+# =================改造=================
+```
+
+470行目付近
 
 ```python
-print(f"DEBUG: linear_attn attributes: {dir(layer.linear_attn)}")
-# Qwen3.5 (GatedDeltaNet) 対応のため out_proj を参照するように変更
-try:
-    try_add("attn.o_proj", layer.linear_attn.out_proj)
-except AttributeError:
-    try_add("attn.o_proj", layer.linear_attn.o_proj)
+base_weight = cast(Tensor, module.base_layer.weight)
 ```
+```python
+# =================改造=================
+if hasattr(module, "base_layer"):
+    base_weight = cast(Tensor, module.base_layer.weight)
+else:
+    # LoRAでラップされていない（通常のLinear層）場合は直接weightを参照する
+    base_weight = cast(Tensor, module.weight)
+# =================改造=================
+```
+
+541
+
+weight_A = cast(Tensor, module.lora_A["default"].weight)
+weight_B = cast(Tensor, module.lora_B["default"].weight)
+weight_A.data = lora_A.to(weight_A.dtype)
+weight_B.data = lora_B.to(weight_B.dtype)
+
+# =================改造=================
+print(f"DEBUG: module type: {type(module)}")
+print(f"DEBUG: module attributes: {dir(module)}")
+# =================改造=================
+weight_A = cast(Tensor, module.lora_A["default"].weight)
+weight_B = cast(Tensor, module.lora_B["default"].weight)
+weight_A.data = lora_A.to(weight_A.dtype)
+weight_B.data = lora_B.to(weight_B.dtype)
+
 
 ### 実行
 
@@ -47,8 +93,8 @@ uv run --no-sync heretic `
 
 uv run --no-sync heretic `
 --model D:/research/Live-Vision-Narrator/models/hub/Qwen3.5-9B `
---device-map auto `
---max-memory '{"0": "7GiB", "cpu": "32GiB"}'
+--device-map "balanced" `
+--max-memory '{"0": "6GiB", "cpu": "24GiB"}'
 ```
 
 ## ライセンス
