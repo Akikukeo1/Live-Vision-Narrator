@@ -4,16 +4,16 @@
 
 ## 機材構成
 
-GPU: RTX 4060 8GB 115W
-CPU: Intel Core i7-14700F PL1-125W PL2-219W tau = 56s
-RAM: DDR5 16*2GB = 32GB XMP 6000MT/s
+GPU: MSI Ventus OC RTX 4060 8GB
+CPU: Intel Core i7-14700F PL1-125W PL2-219W tau = 56s スロットル解放以外はIntelDefaultSettings
+RAM: ADATA DDR5 16*2GB = 32GB XMP 6000MT/s
 ストレージ1: NVMe SSD SN850X 1TB + 2TB
-ストレージ2: HDD 500GB * 4 (Raid1, 0どちらも)
+ストレージ2: HDD 500GB * 4 (Raid1と0。10ではない)
 OS: Windows 11 Home 64bit
 
-Driver: NVIDIA Game Ready Driver 596.21
+Driver: NVIDIA Game Ready Driver 596.21 OR Studio Driver 595.79
 GPU-CUDA: 13.2
-torch: 2.11.0+cu130
+torch: 2.11.0+cu130 OR cu128
 
 ---
 
