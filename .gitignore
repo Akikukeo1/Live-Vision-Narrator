@@ -9,3 +9,5 @@ engine
 node_modules
 /src-rust/target
 live-narrator.exe
+/models/hub
+/.venv

@@ -1,13 +1,17 @@
 # src_py
 
-現在、このAPIはPythonからGoへ移行しています。Pythonは廃止されます。src-goが新しいコードベースで、src_pyは古いコードベースです。src_pyは移行期間中に参照用として残されますが、新しい機能はsrc-goに追加されます。src_pyのコードは将来的に削除される予定です。
+現在、このAPIはPythonからGoへ移行しています。Python製のAPIは廃止されます。
+
+ただし、abliterator/では、ライブラリなどの関係でPythonコードも必要なため、src_pyの一部は当面維持されます。特に、UIサーバ（ui.py）はPythonで運用を続ける予定です。
 
 ## 移行状況
+
+abliterator/: ./Hereticを使用する方向へ変更
 
 client_test.py: 現在、現役のデバッガ用のテストコードです。これがCIで実行される事はありません。
 config.py: 完了 → config.go に移行
 main.py: 完了 → main.go, text_processor.go, ollama_client.go に移行
-ui.py: **当面 Python で維持**。LAN / モバイルから手軽にアクセスできるシンプルな UI サーバ。将来的には `src-go` へ統合予定です。
+ui.py: **当面 Python で維持**。LAN / モバイルから手軽にアクセスできるシンプルな UI サーバ。
 
 ## UI サーバについて（ui.py）
 

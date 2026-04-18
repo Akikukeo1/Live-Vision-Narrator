@@ -1,0 +1,30 @@
+[project]
+name = "abliterator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Akikukeo1 (Keisuke Ishii)", email = "256033008+Akikukeo1@users.noreply.github.com" }
+]
+requires-python = "==3.12.*"
+dependencies = [
+    "heretic-llm>=1.2.0",
+    "transformers>=4.57.0",
+    # uv sync 実行後、Transformerを更新するため
+    # uv pip install git+https://github.com/huggingface/transformers.git
+    # で、手動インストールしてください。
+    "huggingface-hub>=0.36.2",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+    "bitsandbytes>=0.49.2",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu"
+# 現在最も安定している CUDA 12.8 用の URL（必要に応じて 12.1 等に変更可）
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu" }
+torchvision = { index = "pytorch-cu" }
