@@ -2,6 +2,19 @@
 
 目的: 論文用のエビデンス保管。AIとの会話ログを要約し、スライドに使える切り抜きを作成する。
 
+## 機材構成
+
+GPU: RTX 4060 8GB 115W
+CPU: Intel Core i7-14700F PL1-125W PL2-219W tau = 56s
+RAM: DDR5 16*2GB = 32GB XMP 6000MT/s
+ストレージ1: NVMe SSD SN850X 1TB + 2TB
+ストレージ2: HDD 500GB * 4 (Raid1, 0どちらも)
+OS: Windows 11 Home 64bit
+
+Driver: NVIDIA Game Ready Driver 596.21
+GPU-CUDA: 13.2
+torch: 2.11.0+cu130
+
 ---
 
 ## 元のログ（そのまま）
@@ -212,3 +225,9 @@ Go移行前の実装と比較するためのコミット:
 https://github.com/Akikukeo1/Live-Vision-Narrator/tree/53ca72739c6f9ddbcb8a6375dbe60bda9dfce8cb
 
  - 解説: 上記コミットはGo移行前のベースラインとして比較に使えるため、論文や発表資料にはこの参照を併記すると査読者にわかりやすい。
+
+## Abliteratedモデルの作成
+
+まず、Qwen3.5-9bをベースに、HereticでAbliteratedモデルを作成しようとしたが、Qwen3.5は従来の方法では動かなかった。アーキテクチャが異なる。Transformersを開発版に切り替えると、ロードはできるが、Hereticがモデルの構造を正しく認識できないため、エラーが発生した。具体的には、モンキーパッチをすることで、一部を認識できるようになったが、LoRAの構造が異なるため、モデルを作成できなかった。
+
+次に、Gemma4-E4B-itをベースにAbliteratedモデルを作成すると、Transformersのバージョンが足りなかったため、Transformersを最新（開発版ではない）に切り替える必要があった。また、Hereticは、Transformersの古いバージョンが依存であったが、Transformersには下方互換性があったため、Heretic実行時に、Uvによる日付制限とコード実行時の依存確認を回避することで、Hereticを使いながら、最新のTransformersを利用できるようにした。
