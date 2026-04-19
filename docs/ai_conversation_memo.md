@@ -242,9 +242,11 @@ https://github.com/Akikukeo1/Live-Vision-Narrator
 クローズドで閲覧したい場合は、個別にご連絡ください。
 
 ### 実装参考
+
 https://zenn.dev/tokinasin/articles/b7541aeddce13a
 
 ### 論文参考
+
 - Comparative Analysis of LLM Abliteration Methods: A Cross-Architecture Evaluation
 	https://arxiv.org/abs/2512.13655
 - Refusal in Language Models Is Mediated by a Single Direction
