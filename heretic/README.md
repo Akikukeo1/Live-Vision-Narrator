@@ -7,7 +7,7 @@ uv pip install -e .
 Transformersを最新に差し替える。
 uv pip install --upgrade transformers --no-cache
 Torchを最新のCuda対応版に差し替える。
-uv pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu130 --no-cache
+uv pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu128 --no-cache
 
 Cudaが正しく利用可能か確かめるスクリプト
 uv run --no-sync check.py
@@ -18,15 +18,29 @@ uv venv --clear `
 # 現在のリポジトリのHereticをインストールする。 `
 uv pip install -e . `
 # Transformersを最新に差し替える。 `
-uv pip install --upgrade transformers --no-cache `
+uv pip install --upgrade transformers `
 # Torchを最新のCuda対応版に差し替える。 `
-uv pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu130 --no-cache `
+uv pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu128 `
 # Cudaが正しく利用可能か確かめるスクリプト `
 uv run --no-sync check.py
 ```
 
 Heretic実行コマンド。device-mapは"auto"でOK。"Balance"だとうまくいかない事がある。モデルのパスは適宜変更すること。
-uv run --no-sync heretic --device-map "auto" --max-memory '{"0": "5GiB", "cpu": "18GiB"}' --model D:\research\Live-Vision-Narrator\models\hub\google\gemma-4-E4B-it
+```powershell
+uv run --no-sync heretic `
+  --device-map "auto" `
+  --model D:\research\Live-Vision-Narrator\models\hub\google\gemma-4-E4B-it
+```
+
+Hereticをチェックポイントから再開するコマンド。
+```powershell
+uv run --no-sync heretic `
+  --model D:\research\Live-Vision-Narrator\models\hub\google\gemma-4-E4B-it `
+  --study-checkpoint-dir D:\research\Live-Vision-Narrator\heretic\checkpoints `
+  --device-map "auto" `
+  --n-trials 1 `
+  --n-startup-trials 0
+```
 
 uv run には、--no-sync オプションをつけると、コマンド実行後に uv がファイルの変更を検知して再度コマンドを実行するのを防げる。
 

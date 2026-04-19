@@ -1,0 +1,23 @@
+[
+  {
+    "x": 1399,
+    "y": 188,
+    "move_duration": 1.0,
+    "pause_after_move": 10.0,
+    "click": true
+  },
+  {
+    "x": 1511,
+    "y": 189,
+    "move_duration": 1.0,
+    "pause_after_move": 10.0,
+    "click": true
+  },
+  {
+    "x": 1840,
+    "y": 183,
+    "move_duration": 1.0,
+    "pause_after_move": 10.0,
+    "click": true
+  }
+]
