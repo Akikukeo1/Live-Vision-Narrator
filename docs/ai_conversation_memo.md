@@ -12,7 +12,9 @@ RAM: ADATA DDR5 16*2GB = 32GB XMP 6000MT/s
 OS: Windows 11 Home 64bit
 
 Driver: NVIDIA Game Ready Driver 596.21 OR Studio Driver 595.79
-GPU-CUDA: 13.2
+GPU CUDA: 13.2
+PyTorch CUDA: 12.8 OR 13.0
+Transformers: latest (2026/04/20 時点で 5.5.4)
 torch: 2.11.0+cu130 OR cu128
 
 ---
