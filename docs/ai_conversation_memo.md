@@ -5,7 +5,7 @@
 ## 機材構成
 
 GPU: MSI Ventus OC RTX 4060 8GB
-CPU: Intel Core i7-14700F PL1-125W PL2-219W tau = 56s スロットル解放以外はIntelDefaultSettings
+CPU: Intel Core i7-14700F PL1-125W PL2-219W tau = 56s スロットル解放以外はIntelDefaultSettings、Intel不安定問題修正BIOS適用済み
 RAM: ADATA DDR5 16*2GB = 32GB XMP 6000MT/s
 ストレージ1: NVMe SSD SN850X 1TB + 2TB
 ストレージ2: HDD 500GB * 4 (Raid1と0。10ではない)
@@ -233,3 +233,37 @@ https://github.com/Akikukeo1/Live-Vision-Narrator/tree/53ca72739c6f9ddbcb8a6375d
 まず、Qwen3.5-9bをベースに、HereticでAbliteratedモデルを作成しようとしたが、Qwen3.5は従来の方法では動かなかった。アーキテクチャが異なる。Transformersを開発版に切り替えると、ロードはできるが、Hereticがモデルの構造を正しく認識できないため、エラーが発生した。具体的には、モンキーパッチをすることで、一部を認識できるようになったが、LoRAの構造が異なるため、モデルを作成できなかった。
 
 次に、Gemma4-E4B-itをベースにAbliteratedモデルを作成すると、Transformersのバージョンが足りなかったため、Transformersを最新（開発版ではない）に切り替える必要があった。また、Hereticは、Transformersの古いバージョンが依存であったが、Transformersには下方互換性があったため、Heretic実行時に、Uvによる日付制限とコード実行時の依存確認を回避することで、Hereticを使いながら、最新のTransformersを利用できるようにした。
+
+
+## 参考文献
+
+https://github.com/Akikukeo1/Live-Vision-Narrator
+今回の実装は、上記のリポジトリで行われました。今のところはパブリックリポジトリです。クローズドにする予定はありませんが、必要に応じて制限をかける可能性があります。特に、データセットやモデルの一部はライセンス上の理由で公開できない可能性があります。
+クローズドで閲覧したい場合は、個別にご連絡ください。
+
+### 実装参考
+https://zenn.dev/tokinasin/articles/b7541aeddce13a
+
+### 論文参考
+- Comparative Analysis of LLM Abliteration Methods: A Cross-Architecture Evaluation
+	https://arxiv.org/abs/2512.13655
+- Refusal in Language Models Is Mediated by a Single Direction
+	https://arxiv.org/abs/2406.11717
+- Attention Is All You Need
+	https://arxiv.org/abs/1706.03762
+- HuggingFace's Transformers: State-of-the-art Natural Language Processing
+	https://arxiv.org/abs/1910.03771
+
+### データセット参考
+
+- mlabonne/harmless_alpaca
+	https://huggingface.co/datasets/mlabonne/harmless_alpaca
+- mlabonne/harmful_behaviors
+	https://huggingface.co/datasets/mlabonne/harmful_behaviors
+
+### リポジトリ参考
+
+- Heretic
+	https://github.com/p-e-w/heretic
+- Transformers
+	https://github.com/huggingface/transformers
