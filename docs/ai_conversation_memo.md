@@ -269,3 +269,8 @@ https://zenn.dev/tokinasin/articles/b7541aeddce13a
 	https://github.com/p-e-w/heretic
 - Transformers
 	https://github.com/huggingface/transformers
+
+### 記事参考
+
+- モデルとシステムの安全性を評価する
+	https://ai.google.dev/responsible/docs/evaluation
