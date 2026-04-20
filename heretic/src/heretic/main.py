@@ -139,6 +139,10 @@ def obtain_merge_strategy(settings: Settings) -> str | None:
                     value="merge",
                 ),
                 Choice(
+                    title="Save LoRA adapter only (recommended on low RAM systems)",
+                    value="adapter",
+                ),
+                Choice(
                     title="Cancel",
                     value="cancel",
                 ),
