@@ -11,3 +11,5 @@ node_modules
 live-narrator.exe
 /models/hub
 /.venv
+/models/heretic_adapters/gemma-4-E4b-it
+/models/heretic_merged/gemma-4-E4b-it
