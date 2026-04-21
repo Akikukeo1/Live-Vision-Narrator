@@ -3,8 +3,8 @@ from huggingface_hub import snapshot_download
 import os
 
 def main():
-    model_id = "google/gemma-4-E4B-it" # 例としてQwen2.5。3.5ならそのID
-    save_path = "../../models/hub/google/gemma-4-E4B-it" # 保存先のパスを指定
+    model_id = "TrevorJS/gemma-4-E2B-it-uncensored" # 例としてQwen2.5。3.5ならそのID
+    save_path = "../../models/hub/TrevorJS/gemma-4-E2B-it-uncensored" # 保存先のパスを指定
 
     os.makedirs(save_path, exist_ok=True)
 
