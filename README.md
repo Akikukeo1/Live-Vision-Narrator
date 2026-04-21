@@ -1,4 +1,19 @@
-# Ollama proxy (FastAPI)
+docker run --runtime nvidia --gpus all `
+    -v "D:\research\Live-Vision-Narrator\models\hub\TrevorJS\gemma-4-E2B-it-uncensored:/app/model" `
+    -p 8000:8000 `
+    --ipc=host `
+    --name vllm-server `
+    --rm `
+    vllm/vllm-openai:latest `
+    serve /app/model `
+    --dtype bfloat16 `
+    --gpu-memory-utilization 0.8 `
+    --max-model-len 4096 `
+    --enforce-eager `
+    --served-model-name gemma-4-uncensored
+
+
+<!-- # Ollama proxy (FastAPI)
 
 > Low-latency resident FastAPI wrapper that forwards requests to a local Ollama instance.
 
@@ -194,4 +209,4 @@ curl -X POST http://127.0.0.1:8000/session/get -H "Content-Type: application/jso
 
 ---
 
-必要なら、`parameters.inner_style`（`human`/`structured`）を受けて自動的に制御タグを付与するサーバ側パッチも作ります。要望があれば続けます。
+必要なら、`parameters.inner_style`（`human`/`structured`）を受けて自動的に制御タグを付与するサーバ側パッチも作ります。要望があれば続けます。 -->
