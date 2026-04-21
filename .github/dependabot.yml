@@ -39,12 +39,3 @@ updates:
       interval: "daily"
       timezone: "Asia/Tokyo"
     open-pull-requests-limit: 10
-  - package-ecosystem: "cargo"
-    directory: "/src-rust"
-    schedule:
-      interval: "daily"
-      timezone: "Asia/Tokyo"
-    groups:
-      rust-dependencies:
-        patterns: ["*"]
-    open-pull-requests-limit: 10

@@ -7,33 +7,26 @@
     "run:go": "pnpm build:go && powershell -Command \"& './bin/narrator_engine.exe'\"",
     "setup:tools": "go install github.com/golangci/golangci-lint/cmd/golangci-lint && go install mvdan.cc/gofumpt",
 
-    "// test //": "",
-      "test": "run-p test:go test:rust",
-      "test:go": "go -C src-go test ./...",
+    "test": "run-p test:go",
+    "test:go": "go -C src-go test ./...",
 
-    "// lint //": "",
-      "lint:check": "run-p lint:go:check lint:rust:check",
-      "lint:fix": "run-p lint:go:fix lint:rust:fix",
-      "// go linters //": "",
-        "lint:go:check": "golangci-lint run --config .golangci.yml ./src-go/...",
-        "lint:go:fix": "golangci-lint run --config .golangci.yml --fix ./src-go/...",
+    "lint:check": "run-p lint:go:check",
+    "lint:fix": "run-p lint:go:fix",
+    "lint:go:check": "golangci-lint run --config .golangci.yml ./src-go/...",
+    "lint:go:fix": "golangci-lint run --config .golangci.yml --fix ./src-go/...",
 
-    "// fmt //": "",
-      "fmt:check": "run-p fmt:rust:check",
-      "fmt:fix": "run-p fmt:rust:fix",
+    "fmt:check": "echo 'no fmt tasks configured'",
+    "fmt:fix": "echo 'no fmt tasks configured'",
 
-    "// build //": "",
-      "build": "run-p build:go build:rust",
-      "build:go": "go -C src-go build -o ../bin/narrator_engine.exe",
+    "build": "run-p build:go",
+    "build:go": "go -C src-go build -o ../bin/narrator_engine.exe",
 
-    "// other //": "",
-      "get:go": "go -C src-go get ./...",
-      "tidy:go": "go -C src-go mod tidy",
-      "models:create": "ollama create my-narrator -f ./models/Modelfile",
-      "clean": "npx rimraf bin/* src-rust/target",
+    "get:go": "go -C src-go get ./...",
+    "tidy:go": "go -C src-go mod tidy",
+    "models:create": "ollama create my-narrator -f ./models/Modelfile",
+    "clean": "npx rimraf bin/*",
 
-      "// TODO: このスクリプトを実行できるようにする //": "",
-      "go:gen-tests": "gotests -all -w src-go/main.go"
+    "go:gen-tests": "gotests -all -w src-go/main.go"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

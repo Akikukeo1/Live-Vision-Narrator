@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [go, rust]
+        language: [go]
         os: [ubuntu-latest, windows-latest]
         task: [build, test]
         go-version: ['1.26']
@@ -26,38 +26,15 @@ jobs:
           cache: true
           cache-dependency-path: "**/go.sum"
 
-      - name: Set up Rust
-        if: matrix.language == 'rust'
-        uses: dtolnay/rust-toolchain@stable
-
-      # Rust キャッシュ（Rust のみ）
-      - name: Cache Rust
-        if: matrix.language == 'rust'
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "src-rust -> target"
-          prefix-key: "v3-rust-${{ runner.os }}"
-          cache-targets: true
-
       - name: Run Task
         shell: bash
         run: |
-          if [ "${{ matrix.language }}" == "go" ]; then
-            if [ "${{ matrix.task }}" == "build" ]; then
-              echo "--- Go Build on ${{ matrix.os }} ---"
-              (cd src-go && go build ./...)
-            else
-              echo "--- Go Test on ${{ matrix.os }} ---"
-              (cd src-go && go test ./...)
-            fi
+          if [ "${{ matrix.task }}" == "build" ]; then
+            echo "--- Go Build on ${{ matrix.os }} ---"
+            (cd src-go && go build ./...)
           else
-            if [ "${{ matrix.task }}" == "build" ]; then
-              echo "--- Rust Build on ${{ matrix.os }} ---"
-              cargo build --manifest-path src-rust/Cargo.toml
-            else
-              echo "--- Rust Test on ${{ matrix.os }} ---"
-              cargo test --manifest-path src-rust/Cargo.toml
-            fi
+            echo "--- Go Test on ${{ matrix.os }} ---"
+            (cd src-go && go test ./...)
           fi
 
   lint-fmt:
@@ -66,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [go, rust]
+        language: [go]
         task: [lint]
         go-version: ['1.26']
 
@@ -114,8 +91,6 @@ jobs:
           # show go env for debugging
           go env
           go mod download
-
-      # Formatting is handled by golangci-lint in lint step; no separate fmt tool install
 
       - name: Restore golangci-lint binary cache
         if: matrix.language == 'go' && matrix.task == 'lint'
@@ -168,25 +143,3 @@ jobs:
           path: |
             ${{ github.workspace }}/.gobin
           key: golangci-lint-${{ runner.os }}-v1.64.8-go-${{ matrix.go-version }}
-
-
-
-      - name: Set up Rust
-        if: matrix.language == 'rust'
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        if: matrix.language == 'rust'
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "src-rust -> target"
-          prefix-key: "v3-rust-${{ runner.os }}"
-          cache-targets: true
-
-      - name: Run cargo clippy
-        if: matrix.language == 'rust' && matrix.task == 'lint'
-        shell: bash
-        run: |
-          cargo clippy --manifest-path src-rust/Cargo.toml -- -D warnings
-
-      # Rust formatting check omitted; clippy lint covers code quality

@@ -7,7 +7,6 @@ docs/ai_conversation_memo.pdf
 engine
 /bin
 node_modules
-/src-rust/target
 live-narrator.exe
 /models/hub
 /.venv
