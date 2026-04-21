@@ -367,7 +367,6 @@ func (b *Bot) flushFinal(guildID, userKey, channelID string) {
 	}
 	finalText := strings.TrimSpace(resp.FinalText)
 	if finalText != "" {
-		b.reply(channelID, "[音声入力] "+finalText)
 		answer, err := b.sendGenerate(guildID, finalText)
 		if err != nil {
 			log.Printf("voice generate failed: guild=%s err=%v", guildID, err)
