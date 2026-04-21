@@ -18,7 +18,7 @@
             <div class="button-row big-btn-container">
                 <button id="resetSessionBtn" type="button" class="big-btn">記憶リセット</button>
                 <button id="showSessionBtn" type="button" class="big-btn">記憶表示</button>
-                <button id="thinkBtn" type="button" class="big-btn">Thinking発動</button>
+                <button id="thinkBtn" type="button" class="big-btn">Thinking: OFF</button>
             </div>
 
             <label for="model">Model</label>
@@ -27,31 +27,9 @@
             <label for="prompt">Prompt</label>
             <textarea id="prompt" name="prompt" rows="6" style="width:95%;margin-top:6px">こんにちは</textarea>
 
-            <label for="params">Additional JSON parameters (optional)</label>
-            <textarea id="params" name="params" rows="4" style="width:95%;margin-top:6px">{
-            }</textarea>
-
             <div class="toggles" style="margin-top:8px">
-                <label><input id="streamToggle" type="checkbox" checked/> ストリーミング表示</label>
-                <label><input id="parallelToggle" type="checkbox"/> 並列許可</label>
                 <label><input id="chatModeToggle" type="checkbox"/> チャットモード</label>
-                <label><input id="showCoTToggle" type="checkbox"/> CoT表示</label>
-                <label><input id="showInnerToggle" type="checkbox"/> 心の声を表示する</label>
-                <label><input id="saveInnerToggle" type="checkbox"/> 心の声を保存する</label>
-                <label for="innerDetailSelect">詳しく表示</label>
-                <select id="innerDetailSelect" name="innerDetailSelect" style="margin-left:6px">
-                    <option value="short">短い</option>
-                    <option value="long">詳しい</option>
-                </select>
-                <label for="systemProfile" style="margin-left:12px">System Profile</label>
-                <select id="systemProfile" name="systemProfile" style="width:140px;margin-left:6px">
-                    <option value="">(default)</option>
-                    <option value="detailed">detailed</option>
-                </select>
             </div>
-
-            <label for="systemOverride" style="margin-top:8px;display:block">System Override（ローカル開発のみ）</label>
-            <textarea id="systemOverride" name="systemOverride" rows="3" style="width:95%;margin-top:6px;font-size:0.9em" placeholder="生のシステムプロンプトを直接入力（system_profile より優先）。外部アクセス環境では非推奨です。"></textarea>
 
             <button id="sendBtn" type="button" class="big-btn">送信</button>
         </form>
@@ -68,7 +46,7 @@
         <h3>Response</h3>
         <div id="responses"></div>
 
-        <script src="/static/main.js?v=1"></script>
+        <script src="/static/main.js?v=2"></script>
         </div>
     </body>
 </html>

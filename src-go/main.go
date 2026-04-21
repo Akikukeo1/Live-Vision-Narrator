@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"live-narrator/api"
 	"live-narrator/config"
+	"live-narrator/discordbot"
 	"live-narrator/processor"
 	"live-narrator/util"
 	"log"
@@ -30,6 +31,7 @@ type Server struct {
 	ollamaClient    api.OllamaAPI
 	aivisClient     *api.AivisClient
 	textProcessor   *processor.TextProcessor
+	sttService      *STTService
 	sessionContexts sync.Map // セッションIDに関連付けられたコンテキスト
 	sessionHistory  sync.Map // セッションIDに関連付けられた会話履歴
 }
@@ -63,6 +65,31 @@ type ResponseEnvelope struct {
 	Error     string         `json:"error,omitempty"`      // エラーメッセージ（オプション）
 }
 
+// appendSessionHistory はセッション履歴を追記保存します。
+func (s *Server) appendSessionHistory(sessionID, userText, assistantText string) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	assistantText = strings.TrimSpace(assistantText)
+	if assistantText == "" {
+		return
+	}
+
+	var history []HistoryEntry
+	if saved, ok := s.sessionHistory.Load(sessionID); ok {
+		if existing, ok := saved.([]HistoryEntry); ok {
+			history = append(history, existing...)
+		}
+	}
+
+	history = append(history,
+		HistoryEntry{Role: "user", Text: userText},
+		HistoryEntry{Role: "assistant", Text: assistantText},
+	)
+
+	s.sessionHistory.Store(sessionID, history)
+}
+
 // capContext は古いトークンを捨て、最新側のコンテキストだけを保持します。
 // max<=0 の場合は上限なしとして扱います。
 func (s *Server) capContext(ctx []int) []int {
@@ -86,6 +113,40 @@ func (s *Server) capContext(ctx []int) []int {
 
 func main() {
 	settings := config.LoadSettings()
+	var bot *discordbot.Bot
+
+	if strings.TrimSpace(settings.DiscordBotToken) == "" {
+		log.Printf("Discord Bot is disabled: DISCORD_BOT_TOKEN が未設定のため API のみ起動します")
+	} else {
+		ingestURL := fmt.Sprintf("http://%s:%d/stt/ingest", settings.APIHost, settings.APIPort)
+		generateURL := fmt.Sprintf("http://%s:%d/generate", settings.APIHost, settings.APIPort)
+		createdBot, err := discordbot.New(discordbot.Options{
+			Token:                 settings.DiscordBotToken,
+			AllowedGuildID:        settings.DiscordGuildID,
+			AllowedTextChannelID:  settings.DiscordTextChannelID,
+			AllowedVoiceChannelID: settings.DiscordVoiceChannelID,
+			CommandPrefix:         "!",
+			MinimalPostLength:     settings.MinPostChars,
+			IngestURL:             ingestURL,
+			GenerateURL:           generateURL,
+			Model:                 settings.DefaultModel,
+			SilenceMS:             settings.SilenceMS,
+		})
+		if err != nil {
+			log.Printf("Discord Bot 初期化に失敗したため API のみで続行します: %v", err)
+		} else {
+			if err := createdBot.Start(); err != nil {
+				log.Printf("Discord Bot 接続に失敗したため API のみで続行します: %v", err)
+			} else {
+				bot = createdBot
+				defer func() {
+					if err := bot.Close(); err != nil {
+						log.Printf("Discord Bot のクローズでエラー: %v", err)
+					}
+				}()
+			}
+		}
+	}
 
 	// クライアントを初期化
 	ollamaClient := api.NewOllamaClient(settings.OllamaURL)
@@ -97,15 +158,18 @@ func main() {
 		ollamaClient:  ollamaClient,
 		aivisClient:   aivisClient,
 		textProcessor: textProcessor,
+		sttService:    NewSTTService(settings),
 	}
 
 	// HTTP ルートを設定
 	http.HandleFunc("/health", server.handleHealth)
 	http.HandleFunc("/generate", server.handleGenerate)
 	http.HandleFunc("/generate/stream", server.handleGenerateStream)
+	http.HandleFunc("/ws", server.handleWebSocket)
 	http.HandleFunc("/models", server.handleModels)
 	http.HandleFunc("/session/reset", server.handleSessionReset)
 	http.HandleFunc("/session/get", server.handleSessionGet)
+	http.HandleFunc("/stt/ingest", server.handleSTTIngest)
 
 	// Swagger UI を提供 (/swagger/)
 	http.Handle("/swagger/", httpSwagger.WrapHandler)
@@ -202,22 +266,6 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if think, ok := req.Parameters["think"].(bool); ok {
 			ollamaReq.Think = think
 		}
-
-		var systemOverride string
-		if value, ok := req.Parameters["system_override"].(string); ok {
-			systemOverride = strings.TrimSpace(value)
-		}
-
-		var systemProfile string
-		if value, ok := req.Parameters["system_profile"].(string); ok {
-			systemProfile = strings.TrimSpace(value)
-		}
-
-		if systemOverride != "" {
-			ollamaReq.System = systemOverride
-		} else if systemProfile != "" {
-			log.Printf("ignoring system_profile %q because profiles must be resolved to prompt text before setting GenerateRequest.System", systemProfile)
-		}
 	}
 
 	// 保存されたセッションコンテキストがあれば取得
@@ -247,14 +295,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// レスポンスを処理
 	profiler.Mark("processing_start")
-	revealThoughts := false
-	if req.Parameters != nil {
-		if reveal, ok := req.Parameters["reveal_thoughts"].(bool); ok {
-			revealThoughts = reveal
-		}
-	}
-
-	cleanedResponse := s.textProcessor.SanitizeResponse(genResp.Response, revealThoughts)
+	cleanedResponse := s.textProcessor.SanitizeResponse(genResp.Response, true)
 	profiler.Mark("processing_end")
 
 	// セッションのコンテキストと会話履歴を保存
@@ -262,11 +303,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if len(genResp.Context) > 0 {
 			s.sessionContexts.Store(req.SessionID, s.capContext(genResp.Context))
 		}
-		history := []HistoryEntry{
-			{Role: "user", Text: req.Prompt},
-			{Role: "assistant", Text: cleanedResponse},
-		}
-		s.sessionHistory.Store(req.SessionID, history)
+		s.appendSessionHistory(req.SessionID, req.Prompt, cleanedResponse)
 	}
 
 	// レスポンスを構築
@@ -276,7 +313,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		Context:   genResp.Context,
 	}
 
-	if revealThoughts && genResp.Thinking != "" {
+	if genResp.Thinking != "" {
 		envelope.Thinking = genResp.Thinking
 	}
 
@@ -342,12 +379,6 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 		if think, ok := req.Parameters["think"].(bool); ok {
 			ollamaReq.Think = think
 		}
-
-		if systemOverride, ok := req.Parameters["system_override"].(string); ok && strings.TrimSpace(systemOverride) != "" {
-			ollamaReq.System = systemOverride
-		} else if systemProfile, ok := req.Parameters["system_profile"].(string); ok && strings.TrimSpace(systemProfile) != "" {
-			ollamaReq.System = systemProfile
-		}
 	}
 
 	// 保存されたセッションコンテキストがあれば取得
@@ -391,14 +422,6 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Ollama からのストリーム行を逐次処理
-	revealThoughts := false
-	if req.Parameters != nil {
-		if reveal, ok := req.Parameters["reveal_thoughts"].(bool); ok {
-			revealThoughts = reveal
-		}
-	}
-
 	profiler.Mark("streaming_start")
 	var assistantParts []string
 	var lastContext []int
@@ -420,13 +443,9 @@ func (s *Server) handleGenerateStream(w http.ResponseWriter, r *http.Request) {
 
 			// レスポンスを処理
 			if genResp.Response != "" {
-				cleaned := s.textProcessor.SanitizeResponse(genResp.Response, revealThoughts)
+				cleaned := s.textProcessor.SanitizeResponse(genResp.Response, true)
 				assistantParts = append(assistantParts, cleaned)
 				genResp.Response = cleaned
-			}
-
-			if !revealThoughts {
-				genResp.Thinking = ""
 			}
 
 			if len(genResp.Context) > 0 {
@@ -502,11 +521,7 @@ streamEnd:
 		}
 		if len(assistantParts) > 0 {
 			assistantText := strings.Join(assistantParts, "")
-			history := []HistoryEntry{
-				{Role: "user", Text: req.Prompt},
-				{Role: "assistant", Text: assistantText},
-			}
-			s.sessionHistory.Store(req.SessionID, history)
+			s.appendSessionHistory(req.SessionID, req.Prompt, assistantText)
 		}
 	}
 

@@ -1,16 +1,14 @@
 docker run --runtime nvidia --gpus all `
-    -v "D:\research\Live-Vision-Narrator\models\hub\TrevorJS\gemma-4-E2B-it-uncensored:/app/model" `
-    -p 8000:8000 `
-    --ipc=host `
-    --name vllm-server `
-    --rm `
-    vllm/vllm-openai:latest `
-    serve /app/model `
-    --dtype bfloat16 `
-    --gpu-memory-utilization 0.8 `
-    --max-model-len 4096 `
-    --enforce-eager `
-    --served-model-name gemma-4-uncensored
+-v "D:\research\Live-Vision-Narrator\models\hub\TrevorJS\gemma-4-E2B-it-uncensored:/app/model" `
+-p 8000:8000 `
+--ipc=host `
+--rm `
+vllm/vllm-openai:latest `
+--model=/app/model `
+--served-model-name=gemma-4-uncensored `
+--dtype=bfloat16 `
+--max-model-len=4096 `
+--gpu-memory-utilization=0.8
 
 
 <!-- # Ollama proxy (FastAPI)

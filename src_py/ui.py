@@ -37,40 +37,6 @@ def backend_base_url() -> str:
     return f"http://{host}:{port}"
 
 
-def available_system_profiles() -> dict:
-    """ローカルファイルから利用可能なシステムプロファイル一覧を構築します。"""
-    profiles = {}
-
-    default_file = models_dir / "Modelfile"
-    detailed_file = models_dir / "Modelfile.detailed"
-
-    if default_file.exists():
-        profiles["default"] = {"name": "default", "source": str(default_file.relative_to(repo_root))}
-    if detailed_file.exists():
-        profiles["detailed"] = {"name": "detailed", "source": str(detailed_file.relative_to(repo_root))}
-
-    for f in repo_root.glob("Modelfile-*"):
-        suffix = f.name.replace("Modelfile-", "", 1).strip()
-        if suffix:
-            profiles[suffix] = {"name": suffix, "source": f.name}
-
-    return profiles
-
-
-def resolve_system_profile_file(name: str) -> Path | None:
-    if name == "default":
-        p = models_dir / "Modelfile"
-        return p if p.exists() else None
-    if name == "detailed":
-        p = models_dir / "Modelfile.detailed"
-        return p if p.exists() else None
-
-    candidate = repo_root / f"Modelfile-{name}"
-    if candidate.exists():
-        return candidate
-    return None
-
-
 @app.on_event("startup")
 async def startup_event():
     app.state.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
@@ -115,29 +81,6 @@ async def api_config():
     api_host = os.environ.get("API_HOST", "localhost")
     api_port = int(os.environ.get("API_PORT", "8000"))
     return {"api_base_url": f"http://{api_host}:{api_port}", "api_port": api_port}
-
-
-@app.get("/system-profiles")
-async def system_profiles_list():
-    return {"profiles": available_system_profiles()}
-
-
-@app.get("/system-profiles/{name}")
-async def system_profile_get(name: str):
-    profile_file = resolve_system_profile_file(name)
-    if profile_file is None:
-        raise HTTPException(status_code=404, detail=f"system profile not found: {name}")
-
-    try:
-        content = profile_file.read_text(encoding="utf-8")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"failed to read profile: {e}")
-
-    return {
-        "name": name,
-        "source": str(profile_file.relative_to(repo_root)),
-        "content": content,
-    }
 
 
 @app.post("/generate")

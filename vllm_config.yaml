@@ -1,0 +1,5 @@
+model: /app/model
+served_model_name: gemma-4-uncensored
+dtype: bfloat16
+gpu_memory_utilization: 0.8
+max_model_len: 4096

@@ -29,6 +29,20 @@ model_idle_seconds = 4000
 # 連続生成で A_recv が伸びる場合は、この値を小さくして調整してください。
 max_context_tokens = 1024
 
+# Discord / STT (non-secret defaults only)
+discord_guild_id = ""
+discord_text_channel_id = ""
+discord_voice_channel_id = ""
+# 旧設定（互換用）。未設定時は text/voice の両方にフォールバックされます。
+discord_channel_id = ""
+silence_ms = 800
+chunk_ms = 200
+max_segment_ms = 15000
+min_post_chars = 1
+post_cooldown_ms = 1000
+stt_endpoint = ""
+stt_api_key_env_name = "STT_API_KEY"
+
 # System prompt profile file paths (supports local Modelfiles)
 system_default_file = "Modelfile"
 system_detailed_file = "Modelfile.detailed"

@@ -31,7 +31,7 @@ type GenerateRequest struct {
 	Stream  bool                   `json:"stream,omitempty"`  // ストリームモード
 	Options map[string]interface{} `json:"options,omitempty"` // 追加オプション
 	Context []int                  `json:"context,omitempty"` // コンテキスト情報
-	Think   bool                   `json:"think,omitempty"`   // 思考モード
+	Think   bool                   `json:"think"`             // 思考モード（false も必ず送信）
 }
 
 // GenerateResponse は Ollama からの応答を表します
