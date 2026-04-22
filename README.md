@@ -1,7 +1,13 @@
-discordbotに利用している、DiscordGoライブラリは、Discordで導入されたE2EEに対応していないため、E2EEが有効な、フォークされたライブラリを使用する必要があります。これは、現在、DiscordGoのPRがマージされるまでの一時的な措置です。以下のコマンドで、E2EE対応のDiscordGoをインストールできます。
-
+Docker起動コマンド
 ```bash
-go 
+docker compose up -d
+```
+
+discordbotに利用している、DiscordGoライブラリは、Discordで導入されたE2EEに対応していないため、E2EEが有効な、フォークされたライブラリを使用する必要があります。これは、現在、DiscordGoのPRがマージされるまでの一時的な措置です。以下のコマンドで、E2EE対応のDiscordGoをインストールできます。
+<!-- TODO: この@の指定は間違っているかも。@devで指定しなきゃかも。 -->
+```bash
+go mod edit -replace github.com/bwmarrin/discordgo=github.com/yeongaori/discordgo@91c4b536af02b4cf9df5605ecac9fc5d4474a967
+go mod tidy
 ```
 > PR: https://github.com/bwmarrin/discordgo/pull/1704
 > Issue: https://github.com/bwmarrin/discordgo/issues/1697
