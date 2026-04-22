@@ -1,58 +1,43 @@
-# Live-Vision-Narrator Configuration
-#
-# Copy this file to `config.toml` and adjust values as needed.
-# Settings are loaded with the following precedence (highest to lowest):
-#   1. Environment variables (e.g., OLLAMA_URL=...)
-#   2. .env file
-#   3. config.toml file (this file, renamed without .example)
-#   4. Hardcoded defaults in config.py
+# Live-Vision-Narrator - 設定ファイル
+# 環境変数が優先されます（例: OLLAMA_URL, STT_ENDPOINT など）。
 
-# Ollama server connection settings
+# --- Ollama (生成) ---
 ollama_url = "http://localhost:11434"
 ollama_generate_path = "/api/generate"
 ollama_models_path = "/api/tags"
-
-# Whether to enable 'think' (internal reasoning/CoT) by default
-# Override per-request via parameters.think in API calls
 default_think = false
+default_model = "live-narrator"
 
-# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-log_level = "DEBUG"
+# --- ログ / セッション管理 ---
+log_level = "INFO"         # DEBUG, INFO, WARNING, ERROR
+model_idle_seconds = 2000   # モデルがアイドルとみなされる秒数
+max_context_tokens = 0
 
-# Session management: seconds of idle time before a model is considered unloaded
-# Used to detect "first_loading" status in responses
-# Note: Ollama typically keeps models in memory for several minutes. Set this higher
-# to avoid false positives in development (e.g., 4000 miliseconds = 4 seconds).
-model_idle_seconds = 4000
-
-# セッションコンテキストの最大保持トークン数（古いトークンは自動で切り詰め）
-# 連続生成で A_recv が伸びる場合は、この値を小さくして調整してください。
-max_context_tokens = 1024
-
-# Discord / STT (non-secret defaults only)
+# --- Discord / STT ---
+# 空文字は未設定。環境変数での上書きを推奨します。
 discord_guild_id = ""
 discord_text_channel_id = ""
 discord_voice_channel_id = ""
-# 旧設定（互換用）。未設定時は text/voice の両方にフォールバックされます。
-discord_channel_id = ""
 silence_ms = 800
 chunk_ms = 200
 max_segment_ms = 15000
 min_post_chars = 1
 post_cooldown_ms = 1000
-stt_endpoint = ""
-stt_api_key_env_name = "STT_API_KEY"
 
-# System prompt profile file paths (supports local Modelfiles)
+# STT エンドポイント（例: http://localhost:8001/stt/ingest）
+stt_endpoint = ""
+# STT API キーを取得する環境変数名（実際のキーは環境変数に設定する）
+stt_api_key_env_name = "STT_API_KEY"
+# true にすると部分送信せず、最終時に一括で変換結果を送信します
+stt_use_single_final = true  # 部分送信を無効にする(DEBUG)
+
+# --- システムプロンプト / ファイルパス ---
 system_default_file = "Modelfile"
 system_detailed_file = "Modelfile.detailed"
 
-# Server ports / ip
-# host_ip: server binding address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
+# --- サーバ / UI ---
 host_ip = "0.0.0.0"
 ui_ip = "0.0.0.0"
-# api_host: hostname the browser uses to connect to API (use localhost, 127.0.0.1, or public IP)
 api_host = "localhost"
-
 api_port = 8000
 ui_port = 8001

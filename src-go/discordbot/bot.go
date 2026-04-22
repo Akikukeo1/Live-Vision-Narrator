@@ -34,8 +34,12 @@ type Options struct {
 }
 
 type ingestResponse struct {
-	OK        bool   `json:"ok"`
-	FinalText string `json:"final_text"`
+	OK          bool   `json:"ok"`
+	PartialText string `json:"partial_text"`
+	FinalText   string `json:"final_text"`
+	CacheBytes  int    `json:"cache_bytes"`
+	CacheChunks int    `json:"cache_chunks"`
+	ElapsedMs   int64  `json:"elapsed_ms"`
 }
 
 type generateRequest struct {
@@ -61,6 +65,7 @@ type Bot struct {
 	session      *discordgo.Session
 	voiceConns   map[string]*discordgo.VoiceConnection
 	voiceWorkers map[string]*voiceWorker
+	audioBuffers map[string]*bytes.Buffer
 	httpClient   *http.Client
 	mu           sync.Mutex
 }
@@ -84,12 +89,18 @@ func New(opts Options) (*Bot, error) {
 		session:      dg,
 		voiceConns:   make(map[string]*discordgo.VoiceConnection),
 		voiceWorkers: make(map[string]*voiceWorker),
+		audioBuffers: make(map[string]*bytes.Buffer),
 		httpClient: &http.Client{
 			Timeout: 3 * time.Second,
 		},
 	}
 	b.session.AddHandler(b.onMessageCreate)
-	b.session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuildVoiceStates
+	// Ready ハンドラを追加して起動時の state 到着をログに記録する
+	b.session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Printf("Discord Ready: user=%s guilds=%d", s.State.User.Username, len(s.State.Guilds))
+	})
+	// Guilds インテントを追加して、起動時に VoiceStates を含むキャッシュを受け取る
+	b.session.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsGuildVoiceStates
 	return b, nil
 }
 
@@ -169,8 +180,30 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 			return
 		}
 		b.reply(m.ChannelID, "[Bot出力テキスト] "+message)
+	case "whisper":
+		// Whisper テスト: 引数があればそれをプロンプトに使う
+		var prompt string
+		if len(parts) >= 2 {
+			prompt = strings.Join(parts[1:], " ")
+		} else {
+			prompt = "Whisperテスト"
+		}
+		// 非同期で生成を呼び出す（メッセージハンドラをブロックしない）
+		go func(channelID, sessionID, p string) {
+			resp, err := b.sendGenerate(sessionID, p)
+			if err != nil {
+				b.reply(channelID, "Whisper生成に失敗: "+err.Error())
+				return
+			}
+			resp = strings.TrimSpace(resp)
+			if resp == "" {
+				b.reply(channelID, "(生成結果なし)")
+				return
+			}
+			b.reply(channelID, "[Whisper] "+resp)
+		}(m.ChannelID, m.GuildID, prompt)
 	default:
-		b.reply(m.ChannelID, "利用可能コマンド: !ping, !join, !leave, !say")
+		b.reply(m.ChannelID, "利用可能コマンド: !ping, !join, !leave, !say, !whisper")
 	}
 }
 
@@ -344,9 +377,14 @@ func (b *Bot) forwardVoicePackets(guildID string, worker *voiceWorker, vc *disco
 			}
 			userKey := fmt.Sprintf("ssrc-%d", packet.SSRC)
 			lastSeen[userKey] = time.Now()
-			if _, err := b.sendIngest(guildID, userKey, packet.Opus, false); err != nil {
-				log.Printf("voice ingest failed: guild=%s user=%s err=%v", guildID, userKey, err)
+			b.mu.Lock()
+			buf := b.audioBuffers[userKey]
+			if buf == nil {
+				buf = &bytes.Buffer{}
+				b.audioBuffers[userKey] = buf
 			}
+			_, _ = buf.Write(packet.Opus)
+			b.mu.Unlock()
 		case <-ticker.C:
 			now := time.Now()
 			for userKey, ts := range lastSeen {
@@ -360,21 +398,50 @@ func (b *Bot) forwardVoicePackets(guildID string, worker *voiceWorker, vc *disco
 }
 
 func (b *Bot) flushFinal(guildID, userKey, channelID string) {
-	resp, err := b.sendIngest(guildID, userKey, nil, true)
+	b.mu.Lock()
+	buf := b.audioBuffers[userKey]
+	if buf == nil || buf.Len() == 0 {
+		delete(b.audioBuffers, userKey)
+		b.mu.Unlock()
+		log.Printf("voice final: no buffered audio for guild=%s user=%s", guildID, userKey)
+		return
+	}
+	payload := make([]byte, buf.Len())
+	copy(payload, buf.Bytes())
+	delete(b.audioBuffers, userKey)
+	b.mu.Unlock()
+
+	resp, err := b.sendIngest(guildID, userKey, payload, true)
 	if err != nil {
 		log.Printf("voice final ingest failed: guild=%s user=%s err=%v", guildID, userKey, err)
 		return
 	}
+	// 詳細ログ
+	log.Printf("voice final: guild=%s user=%s partial=%q final=%q bytes=%d chunks=%d elapsed_ms=%d",
+		guildID, userKey, resp.PartialText, resp.FinalText, resp.CacheBytes, resp.CacheChunks, resp.ElapsedMs)
+
 	finalText := strings.TrimSpace(resp.FinalText)
+	partialText := strings.TrimSpace(resp.PartialText)
+
+	// まず変換後の Whisper をテキストチャットに貼る
+	if finalText != "" {
+		b.reply(channelID, "[Whisper] "+finalText)
+	} else if partialText != "" {
+		b.reply(channelID, "[Whisper(部分)] "+partialText)
+	} else {
+		b.reply(channelID, "[Whisper] (認識結果なし)")
+	}
+
+	// 次に生成を試みる（生成に失敗しても Whisper は既に貼られている）
 	if finalText != "" {
 		answer, err := b.sendGenerate(guildID, finalText)
 		if err != nil {
 			log.Printf("voice generate failed: guild=%s err=%v", guildID, err)
-			return
-		}
-		answer = strings.TrimSpace(answer)
-		if answer != "" {
-			b.reply(channelID, "[応答] "+answer)
+		} else {
+			answer = strings.TrimSpace(answer)
+			if answer != "" {
+				b.reply(channelID, "[応答] "+answer)
+			}
 		}
 	}
 }
@@ -467,15 +534,33 @@ func (b *Bot) sendIngest(sessionID, userID string, payload []byte, final bool) (
 	if err := json.Unmarshal(body, out); err != nil {
 		return nil, err
 	}
+
+	// 詳細ログ（短めに）
+	log.Printf("sendIngest response: session=%s user=%s partial=%q final=%q bytes=%d chunks=%d elapsed_ms=%d",
+		sessionID, userID, out.PartialText, out.FinalText, out.CacheBytes, out.CacheChunks, out.ElapsedMs)
+
 	return out, nil
 }
 
 func (b *Bot) findUserVoiceChannelID(s *discordgo.Session, guildID, userID string) (string, error) {
+	// まず state の直接参照を試す（キャッシュがある場合）
+	if vs, verr := s.State.VoiceState(guildID, userID); verr == nil && vs != nil && vs.ChannelID != "" {
+		return vs.ChannelID, nil
+	}
+
+	// state の guild から VoiceStates を探索
 	guild, err := s.State.Guild(guildID)
 	if err != nil || guild == nil {
 		guild, err = s.Guild(guildID)
 		if err != nil {
-			return "", err
+			// RESTでも見つからない場合、state がまだ到着していない可能性があるため短時間リトライする
+			for i := 0; i < 5; i++ {
+				time.Sleep(200 * time.Millisecond)
+				if vs, verr := s.State.VoiceState(guildID, userID); verr == nil && vs != nil && vs.ChannelID != "" {
+					return vs.ChannelID, nil
+				}
+			}
+			return "", fmt.Errorf("voice state not found")
 		}
 	}
 
@@ -484,6 +569,21 @@ func (b *Bot) findUserVoiceChannelID(s *discordgo.Session, guildID, userID strin
 			return vs.ChannelID, nil
 		}
 	}
+
+	// 最終手段で短時間ポーリングして state の到着を待つ
+	for i := 0; i < 5; i++ {
+		time.Sleep(200 * time.Millisecond)
+		if vs, verr := s.State.VoiceState(guildID, userID); verr == nil && vs != nil && vs.ChannelID != "" {
+			return vs.ChannelID, nil
+		}
+	}
+
+	// デバッグ出力
+	var lenVS int
+	if guild != nil {
+		lenVS = len(guild.VoiceStates)
+	}
+	log.Printf("findUserVoiceChannelID: not found guild=%s user=%s guildVoiceStates=%d", guildID, userID, lenVS)
 	return "", fmt.Errorf("voice state not found")
 }
 

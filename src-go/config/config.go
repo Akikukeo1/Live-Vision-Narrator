@@ -37,18 +37,21 @@ type Settings struct {
 	MaxContextTokens int `toml:"max_context_tokens"`
 
 	// Discord / STT
-	DiscordBotToken          string `toml:"-"`
-	DiscordGuildID           string `toml:"discord_guild_id"`
-	DiscordTextChannelID     string `toml:"discord_text_channel_id"`
-	DiscordVoiceChannelID    string `toml:"discord_voice_channel_id"`
-	LegacyDiscordChannelID   string `toml:"discord_channel_id"`
-	SilenceMS                int    `toml:"silence_ms"`
-	ChunkMS                  int    `toml:"chunk_ms"`
-	MaxSegmentMS             int    `toml:"max_segment_ms"`
-	MinPostChars             int    `toml:"min_post_chars"`
-	PostCooldownMS           int    `toml:"post_cooldown_ms"`
-	STTEndpoint              string `toml:"stt_endpoint"`
-	STTAPIKeyEnvName         string `toml:"stt_api_key_env_name"`
+	DiscordBotToken        string `toml:"-"`
+	DiscordGuildID         string `toml:"discord_guild_id"`
+	DiscordTextChannelID   string `toml:"discord_text_channel_id"`
+	DiscordVoiceChannelID  string `toml:"discord_voice_channel_id"`
+	LegacyDiscordChannelID string `toml:"discord_channel_id"`
+	SilenceMS              int    `toml:"silence_ms"`
+	ChunkMS                int    `toml:"chunk_ms"`
+	MaxSegmentMS           int    `toml:"max_segment_ms"`
+	MinPostChars           int    `toml:"min_post_chars"`
+	PostCooldownMS         int    `toml:"post_cooldown_ms"`
+	STTEndpoint            string `toml:"stt_endpoint"`
+	STTAPIKeyEnvName       string `toml:"stt_api_key_env_name"`
+	// STTUseSingleFinal: true の場合、Opus をストリーミングで部分送信せず、
+	// 最終時にまとめて PCM を一括送信して確定テキストのみを採用します。
+	STTUseSingleFinal bool `toml:"stt_use_single_final"`
 }
 
 // LoadSettings は config.toml から設定を読み込み、環境変数で上書きします
@@ -76,14 +79,18 @@ func LoadSettings() *Settings {
 		MinPostChars:       1,
 		PostCooldownMS:     1000,
 		STTAPIKeyEnvName:   "STT_API_KEY",
+		STTUseSingleFinal:  false,
 	}
 
-	// config.toml からの読み込みを試みる
+	// config.toml からの読み込みを試みる。ルート直下がなければ config/config.toml も探索する。
 	// NOTE: デフォルトの ModelIdleSeconds=2000 は長めに設定されています。
-	configPath := "config.toml"
-	if data, err := os.ReadFile(configPath); err == nil {
-		if err := toml.Unmarshal(data, s); err != nil {
-			_ = err
+	configPaths := []string{"config.toml", "config/config.toml"}
+	for _, configPath := range configPaths {
+		if data, err := os.ReadFile(configPath); err == nil {
+			if err := toml.Unmarshal(data, s); err != nil {
+				_ = err
+			}
+			break
 		}
 	}
 
