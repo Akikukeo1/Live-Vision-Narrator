@@ -1,14 +1,11 @@
-docker run --runtime nvidia --gpus all `
--v "D:\research\Live-Vision-Narrator\models\hub\TrevorJS\gemma-4-E2B-it-uncensored:/app/model" `
--p 8000:8000 `
---ipc=host `
---rm `
-vllm/vllm-openai:latest `
---model=/app/model `
---served-model-name=gemma-4-uncensored `
---dtype=bfloat16 `
---max-model-len=4096 `
---gpu-memory-utilization=0.8
+discordbotに利用している、DiscordGoライブラリは、Discordで導入されたE2EEに対応していないため、E2EEが有効な、フォークされたライブラリを使用する必要があります。これは、現在、DiscordGoのPRがマージされるまでの一時的な措置です。以下のコマンドで、E2EE対応のDiscordGoをインストールできます。
+
+```bash
+go 
+```
+> PR: https://github.com/bwmarrin/discordgo/pull/1704
+> Issue: https://github.com/bwmarrin/discordgo/issues/1697
+> フォークされたライブラリ: https://github.com/yeongaori/discordgo-fork/tree/91c4b536af02b4cf9df5605ecac9fc5d4474a967
 
 
 <!-- # Ollama proxy (FastAPI)
