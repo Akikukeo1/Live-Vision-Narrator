@@ -203,6 +203,8 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 			b.reply(channelID, "[Whisper] "+resp)
 		}(m.ChannelID, m.GuildID, prompt)
 	default:
+		// NOTE: 自動生成できそう
+		// TODO: 自動生成できそう
 		b.reply(m.ChannelID, "利用可能コマンド: !ping, !join, !leave, !say, !whisper")
 	}
 }
