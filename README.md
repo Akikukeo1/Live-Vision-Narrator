@@ -1,6 +1,11 @@
 Docker起動コマンド
 ```bash
-docker compose up -d
+docker compose -f compose.yaml -f compose.cuda.yaml up -d
+```
+
+Docker終了コマンド
+```bash
+docker compose down
 ```
 
 discordbotに利用している、DiscordGoライブラリは、Discordで導入されたE2EEに対応していないため、E2EEが有効な、フォークされたライブラリを使用する必要があります。これは、現在、DiscordGoのPRがマージされるまでの一時的な措置です。以下のコマンドで、E2EE対応のDiscordGoをインストールできます。
