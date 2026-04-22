@@ -248,29 +248,32 @@ https://zenn.dev/tokinasin/articles/b7541aeddce13a
 ### 論文参考
 
 - Comparative Analysis of LLM Abliteration Methods: A Cross-Architecture Evaluation
-	https://arxiv.org/abs/2512.13655
+	- https://arxiv.org/abs/2512.13655
 - Refusal in Language Models Is Mediated by a Single Direction
-	https://arxiv.org/abs/2406.11717
+	- https://arxiv.org/abs/2406.11717
 - Attention Is All You Need
-	https://arxiv.org/abs/1706.03762
+	- https://arxiv.org/abs/1706.03762
 - HuggingFace's Transformers: State-of-the-art Natural Language Processing
-	https://arxiv.org/abs/1910.03771
+	- https://arxiv.org/abs/1910.03771
 
 ### データセット参考
 
 - mlabonne/harmless_alpaca
-	https://huggingface.co/datasets/mlabonne/harmless_alpaca
+	- https://huggingface.co/datasets/mlabonne/harmless_alpaca
 - mlabonne/harmful_behaviors
-	https://huggingface.co/datasets/mlabonne/harmful_behaviors
+	- https://huggingface.co/datasets/mlabonne/harmful_behaviors
 
 ### リポジトリ参考
 
 - Heretic
-	https://github.com/p-e-w/heretic
+	- https://github.com/p-e-w/heretic
 - Transformers
-	https://github.com/huggingface/transformers
+	- https://github.com/huggingface/transformers
 
 ### 記事参考
 
 - モデルとシステムの安全性を評価する
-	https://ai.google.dev/responsible/docs/evaluation
+	- https://ai.google.dev/responsible/docs/evaluation
+- PEP 703 – Making the Global Interpreter Lock Optional in CPython
+	- https://peps.python.org/pep-0703/
+		- DeepMindでは、PythonのGIL（グローバルインタプリタロック）に関する問題に頻繁に直面しています。多くのアプリケーションでは、プロセスあたり50～100スレッド程度で実行したいと考えていますが、10スレッド未満でもGILがボトルネックになることがよくあります。この問題を回避するためにサブプロセスを使用することもありますが、多くの場合、プロセス間通信のオーバーヘッドが大きくなりすぎます。GILに対処するために、Pythonコードベースの大部分をC++に変換することになりますが、これは研究者にとってコードへのアクセス性が低下するため、望ましくありません。
