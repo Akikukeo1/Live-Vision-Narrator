@@ -243,7 +243,8 @@ https://github.com/Akikukeo1/Live-Vision-Narrator
 
 ### 実装参考
 
-https://zenn.dev/tokinasin/articles/b7541aeddce13a
+- https://zenn.dev/tokinasin/articles/b7541aeddce13a
+- https://zenn.dev/kun432/scraps/0b84f7a9d8e167
 
 ### 論文参考
 
@@ -269,6 +270,8 @@ https://zenn.dev/tokinasin/articles/b7541aeddce13a
 	- https://github.com/p-e-w/heretic
 - Transformers
 	- https://github.com/huggingface/transformers
+- Speaches
+	- https://github.com/speaches-ai/speaches
 
 ### 記事参考
 
@@ -277,3 +280,5 @@ https://zenn.dev/tokinasin/articles/b7541aeddce13a
 - PEP 703 – Making the Global Interpreter Lock Optional in CPython
 	- https://peps.python.org/pep-0703/
 		- DeepMindでは、PythonのGIL（グローバルインタプリタロック）に関する問題に頻繁に直面しています。多くのアプリケーションでは、プロセスあたり50～100スレッド程度で実行したいと考えていますが、10スレッド未満でもGILがボトルネックになることがよくあります。この問題を回避するためにサブプロセスを使用することもありますが、多くの場合、プロセス間通信のオーバーヘッドが大きくなりすぎます。GILに対処するために、Pythonコードベースの大部分をC++に変換することになりますが、これは研究者にとってコードへのアクセス性が低下するため、望ましくありません。
+- Using Go at Google
+	- https://go.dev/solutions/google/
