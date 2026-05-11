@@ -13,7 +13,7 @@ jobs:
       - name: 'Checkout Repository'
         uses: actions/checkout@v6
       - name: 'Dependency Review'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           # Provide refs when workflow isn't triggered by a PR event
           # Use the correct input names: 'base-ref' and 'head-ref'
